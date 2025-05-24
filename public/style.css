@@ -1,0 +1,21 @@
+body {
+  margin: 0;
+  overflow: hidden; /* Mencegah scrollbar */
+  background-color: #222;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+canvas {
+  display: block;
+}
+
+#info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 5px;
+  z-index: 100;
+}

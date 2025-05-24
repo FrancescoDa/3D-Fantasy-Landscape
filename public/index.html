@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mystica Fantasy - 3D Map</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="info">
+      Mystica Fantasy Map<br />
+      Tekan 'M' untuk ganti mode kamera (Rotasi / WASD)<br />
+      Mode Rotasi: Klik & seret untuk rotasi, Scroll untuk zoom<br />
+      Mode WASD: Klik untuk mengunci kursor. Gerakkan mouse untuk melihat.<br />
+      W: Maju, S: Mundur, A: Kiri, D: Kanan, Spasi: Naik, Shift: Turun
+    </div>
+    <div
+      id="loading-screen"
+      style="
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        background-color: #333;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 999;
+        font-size: 2em;
+      "
+    >
+      Memuat Model... <span id="progress">0</span>%
+    </div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
+
+<!-- <!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to Mystica Fantasy</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="three-canvas"></canvas>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html> -->
