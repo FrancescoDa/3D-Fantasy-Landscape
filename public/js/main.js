@@ -15,16 +15,25 @@ let moveRight = false;
 let moveUp = false;
 let moveDown = false;
 
-// --- PERUBAHAN: Tingkatkan kecepatan WASD ---
-const moveSpeed = 50.0; // Sebelumnya 10.0, ditingkatkan menjadi 15.0 (sesuaikan jika perlu)
+const moveSpeed = 15.0; // Kecepatan WASD
 
 let currentCameraMode = "orbit"; // 'orbit' atau 'pointerlock'
 
 const loadingScreen = document.getElementById("loading-screen");
 const progressElement = document.getElementById("progress");
 
-// Variabel untuk material air, dideklarasikan di sini agar tetap ada (meskipun tidak dianimate)
-let foggyWaterMaterial;
+let foggyWaterMaterial; // Variabel untuk material air
+
+// --- NEW: Variabel untuk efek tembakan cahaya ---
+let fireKeyIsPressed = false; // Untuk mencegah tembakan terus-menerus saat tombol ditahan
+const shots = []; // Array untuk menyimpan semua objek tembakan yang aktif
+const shotSpeed = 100.0; // Kecepatan "peluru" cahaya
+const shotLifetime = 1.0; // Durasi hidup cahaya dalam detik
+const shotLightIntensity = 100; // Intensitas cahaya tembakan
+const shotLightDistance = 100; // Jarak cahaya tembakan menyebar
+const shotVisualSize = 0.2; // Ukuran visual bola cahaya
+const shotColor = 0x0000ff; // Warna biru untuk tembakan
+// --- END NEW ---
 
 function init() {
   // Scene
@@ -46,16 +55,16 @@ function init() {
   // Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true; // Aktifkan bayangan
+  renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.body.appendChild(renderer.domElement);
 
   // Lighting
-  const ambientLight = new THREE.AmbientLight(0x777799, 0.7); // Cahaya ambient kebiruan/abu-abu, intensitas lebih tinggi
+  const ambientLight = new THREE.AmbientLight(0x777799, 0.7);
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xeeeeff, 0.8); // Cahaya "bulan" kebiruan terang, intensitas lebih tinggi
-  directionalLight.position.set(20, 50, 20); // Sesuaikan posisi bulan
+  const directionalLight = new THREE.DirectionalLight(0xeeeeff, 0.8);
+  directionalLight.position.set(20, 50, 20);
   directionalLight.castShadow = true;
   directionalLight.shadow.mapSize.width = 2048;
   directionalLight.shadow.mapSize.height = 2048;
@@ -66,12 +75,11 @@ function init() {
   directionalLight.shadow.camera.top = 100;
   directionalLight.shadow.camera.bottom = -100;
   scene.add(directionalLight);
-  // scene.add(new THREE.CameraHelper(directionalLight.shadow.camera)); // Untuk debug bayangan
 
   // Controls
   setupControls();
 
-  // --- PERUBAHAN: Langsung panggil loadGLTFModel, tidak perlu loadAssets terpisah ---
+  // Load Model
   loadGLTFModel("assets/main_land.glb");
 
   // Event Listeners
@@ -127,8 +135,7 @@ function loadGLTFModel(path) {
       scene.add(model);
       model.updateMatrixWorld(true); // Pastikan matriks dunia diperbarui
 
-      // --- PERUBAHAN: Define the foggy water material di sini lagi ---
-      // Material air tanpa normal map
+      // Material air (biru, tanpa normal map, tanpa aliran)
       foggyWaterMaterial = new THREE.MeshStandardMaterial({
           color: 0x4488FF,    // Warna biru yang lebih kuat
           metalness: 0.1,
@@ -137,7 +144,6 @@ function loadGLTFModel(path) {
           opacity: 0.7,
           side: THREE.DoubleSide
       });
-      // --- END PERUBAHAN ---
 
       // Aktifkan bayangan untuk semua mesh dalam model dan terapkan material air
       model.traverse(function (node) {
@@ -231,6 +237,15 @@ function onKeyDown(event) {
     case "ShiftRight":
       moveDown = true;
       break;
+    // --- NEW: Tombol 'R' untuk menembak cahaya biru ---
+    case "KeyR":
+      // Pastikan dalam mode pointerlock, kursor terkunci, dan tombol belum ditekan
+      if (currentCameraMode === "pointerlock" && !fireKeyIsPressed && pointerLockControls.isLocked) {
+        createBlueShot(); // Panggil fungsi untuk membuat tembakan
+        fireKeyIsPressed = true; // Set flag untuk mencegah spam tembakan
+      }
+      break;
+    // --- END NEW ---
   }
 }
 
@@ -255,6 +270,11 @@ function onKeyUp(event) {
     case "ShiftRight":
       moveDown = false;
       break;
+    // --- NEW: Reset flag saat tombol 'R' dilepas ---
+    case "KeyR":
+      fireKeyIsPressed = false;
+      break;
+    // --- END NEW ---
   }
 }
 
@@ -273,6 +293,34 @@ function toggleCameraMode() {
     console.log("Mode Kamera: Orbit");
   }
 }
+
+// --- NEW FUNCTION: Membuat tembakan cahaya biru ---
+function createBlueShot() {
+    const shotOrigin = camera.position.clone(); // Posisi awal tembakan adalah posisi kamera
+    const shotDirection = new THREE.Vector3();
+    camera.getWorldDirection(shotDirection); // Arah tembakan sesuai arah pandang kamera
+
+    // Buat cahaya PointLight
+    const light = new THREE.PointLight(shotColor, shotLightIntensity, shotLightDistance, 2); // Warna biru, intensitas, jarak, decay
+    light.position.copy(shotOrigin);
+    scene.add(light);
+
+    // Buat visual bola kecil (representasi "peluru" cahaya)
+    const sphereGeometry = new THREE.SphereGeometry(shotVisualSize, 8, 8); // Ukuran kecil
+    const sphereMaterial = new THREE.MeshBasicMaterial({ color: shotColor }); // Material dasar biru
+    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    sphere.position.copy(shotOrigin);
+    scene.add(sphere);
+
+    // Simpan objek tembakan ke array untuk dianimasikan dan dihapus
+    shots.push({
+        light: light,
+        sphere: sphere,
+        direction: shotDirection,
+        life: shotLifetime // Durasi hidup
+    });
+}
+// --- END NEW FUNCTION ---
 
 function updatePlayerMovement(deltaTime) {
   if (!pointerLockControls.isLocked) return;
@@ -306,6 +354,29 @@ function animate() {
     orbitControls.update();
   } else if (currentCameraMode === "pointerlock") {
     updatePlayerMovement(deltaTime);
+
+    // --- NEW: Update dan hapus tembakan cahaya ---
+    for (let i = shots.length - 1; i >= 0; i--) { // Iterasi mundur agar aman saat menghapus elemen
+      const shot = shots[i];
+
+      // Gerakkan cahaya dan bola ke depan
+      shot.light.position.addScaledVector(shot.direction, shotSpeed * deltaTime);
+      shot.sphere.position.addScaledVector(shot.direction, shotSpeed * deltaTime);
+
+      // Kurangi durasi hidup
+      shot.life -= deltaTime;
+
+      // Hapus jika sudah melewati durasi hidup
+      if (shot.life <= 0) {
+        scene.remove(shot.light);
+        scene.remove(shot.sphere);
+        // Penting: Disposisi geometri dan material untuk mencegah memory leak
+        shot.sphere.geometry.dispose();
+        shot.sphere.material.dispose();
+        shots.splice(i, 1); // Hapus dari array
+      }
+    }
+    // --- END NEW ---
   }
 
   renderer.render(scene, camera);
