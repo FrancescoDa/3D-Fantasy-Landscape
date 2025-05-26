@@ -25,6 +25,11 @@ let orbitControlsInstance, pointerLockControlsInstance;
 // --- Variabel camera dan scene akan di-pass dan disimpan ---
 let managedCamera, managedScene;
 
+// --- NEW: Variabel untuk menyimpan state OrbitControls saat di PointerLock ---
+let lastOrbitTarget = new THREE.Vector3();
+let lastOrbitPosition = new THREE.Vector3(); // Bisa juga hanya menyimpan target dan mengandalkan posisi saat ini
+let wasInPointerLockMode = false; // Flag untuk menandai transisi
+
 export function setupControls(camera, rendererDomElement, scene) {
   managedCamera = camera; // Simpan referensi kamera
   managedScene = scene; // Simpan referensi scene
@@ -37,7 +42,9 @@ export function setupControls(camera, rendererDomElement, scene) {
   orbitControlsInstance.minDistance = 5;
   orbitControlsInstance.maxDistance = 100;
   orbitControlsInstance.maxPolarAngle = Math.PI / 2 - 0.05;
-  orbitControlsInstance.target.set(0, 2, 0);
+  orbitControlsInstance.target.set(0, 2, 0); // Set target awal
+  lastOrbitTarget.copy(orbitControlsInstance.target); // Simpan target awal
+  lastOrbitPosition.copy(camera.position); // Simpan posisi awal
   orbitControlsInstance.enabled = currentCameraMode === "orbit";
 
   // ... (setup PointerLockControls seperti sebelumnya) ...
@@ -47,13 +54,62 @@ export function setupControls(camera, rendererDomElement, scene) {
   pointerLockControlsInstance.addEventListener("lock", () => {
     console.log("PointerLock: Locked");
     toggleInfoPanel(false);
+
+    // --- NEW: Saat masuk PointerLock, simpan state OrbitControls ---
+    if (orbitControlsInstance.enabled) {
+      // Jika sebelumnya orbit aktif
+      lastOrbitTarget.copy(orbitControlsInstance.target);
+      lastOrbitPosition.copy(managedCamera.position); // Simpan posisi kamera saat ini
+    }
+    wasInPointerLockMode = true;
   });
+
   pointerLockControlsInstance.addEventListener("unlock", () => {
     console.log("PointerLock: Unlocked");
     toggleInfoPanel(true);
     if (currentCameraMode === "orbit") {
+      if (wasInPointerLockMode) {
+        // Atur target OrbitControls ke posisi pemain saat ini (atau sedikit di depannya)
+        // Opsi 1: Jadikan posisi pemain sebagai target baru
+        // orbitControlsInstance.target.copy(managedCamera.position);
+        // Ini akan membuat kamera "terpaku" pada pemain dan tidak bisa di-pan jauh.
+
+        // Opsi 2: Jadikan titik di depan pemain sebagai target (lebih alami untuk orbit)
+        const lookDirection = new THREE.Vector3();
+        managedCamera.getWorldDirection(lookDirection);
+        // Atur target sedikit di depan posisi kamera saat ini, di ground level
+        const newTarget = managedCamera.position
+          .clone()
+          .add(lookDirection.multiplyScalar(10)); // Jarak 10 unit di depan
+        newTarget.y = managedCamera.position.y - 2; // Asumsi ground adalah 2 unit di bawah mata pemain
+        // Atau, jika Anda punya cara untuk mendeteksi ground, gunakan itu.
+        // Untuk sederhana, kita bisa gunakan posisi terakhir orbit target jika pemain tidak banyak bergerak vertikal.
+        // orbitControlsInstance.target.set(managedCamera.position.x, lastOrbitTarget.y, managedCamera.position.z);
+
+        // Opsi yang lebih baik: Gunakan posisi kamera saat ini dan target yang disimpan/dihitung
+        // Kamera sudah di posisi yang benar karena kita tidak mengubahnya.
+        // Kita hanya perlu memastikan target OrbitControls masuk akal.
+        // Cara paling sederhana adalah mengembalikan target ke posisi terakhirnya SEBELUM masuk mode pointer lock
+        // atau hitung target baru berdasarkan posisi kamera saat ini.
+
+        // Pendekatan yang paling mulus:
+        // 1. Kamera sudah di posisi yang benar.
+        // 2. OrbitControls akan mengorbit di sekitar targetnya.
+        // Kita ingin targetnya berada di "sekitar" pemain.
+        // Mungkin target terbaik adalah posisi pemain di ground.
+        const playerPositionOnGround = managedCamera.position.clone();
+        // Asumsikan tinggi pemain, atau jika Anda punya ground level, gunakan itu.
+        // Jika kamera.position.y adalah tinggi mata, kurangi itu untuk mendapatkan ground.
+        // Misalnya, jika mata pemain 2 unit di atas kaki:
+        playerPositionOnGround.y -= 2; // Sesuaikan ini dengan tinggi "mata" pemain Anda
+        orbitControlsInstance.target.copy(playerPositionOnGround);
+      }
+
       orbitControlsInstance.enabled = true;
+
+      orbitControlsInstance.update();
     }
+    wasInPointerLockMode = false; 
   });
 
   document.addEventListener("keydown", onKeyDown, false);
@@ -153,14 +209,30 @@ function onKeyUp(event) {
 function toggleCameraModeInternal() {
   if (currentCameraMode === "orbit") {
     currentCameraMode = "pointerlock";
+
+    if (orbitControlsInstance.enabled) { // Jika orbit sedang aktif
+        lastOrbitTarget.copy(orbitControlsInstance.target);
+        lastOrbitPosition.copy(managedCamera.position);
+    }
+
     orbitControlsInstance.enabled = false;
+    wasInPointerLockMode = true;
     console.log("Mode Kamera: PointerLock (WASD). Klik untuk mengunci kursor.");
   } else {
     currentCameraMode = "orbit";
     if (pointerLockControlsInstance.isLocked) {
       pointerLockControlsInstance.unlock();
+    } else {
+      // Jika tidak terkunci tapi tetap beralih ke orbit
+      if (wasInPointerLockMode) {
+        const playerPositionOnGround = managedCamera.position.clone();
+        playerPositionOnGround.y -= 2; // Sesuaikan
+        orbitControlsInstance.target.copy(playerPositionOnGround);
+      }
+      orbitControlsInstance.enabled = true;
+      orbitControlsInstance.update();
+      wasInPointerLockMode = false;
     }
-    orbitControlsInstance.enabled = true;
     console.log("Mode Kamera: Orbit");
   }
 }
