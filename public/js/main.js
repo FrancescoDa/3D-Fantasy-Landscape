@@ -15,12 +15,16 @@ let moveRight = false;
 let moveUp = false;
 let moveDown = false;
 
-const moveSpeed = 10.0;
+// --- PERUBAHAN: Tingkatkan kecepatan WASD ---
+const moveSpeed = 50.0; // Sebelumnya 10.0, ditingkatkan menjadi 15.0 (sesuaikan jika perlu)
 
 let currentCameraMode = "orbit"; // 'orbit' atau 'pointerlock'
 
 const loadingScreen = document.getElementById("loading-screen");
 const progressElement = document.getElementById("progress");
+
+// Variabel untuk material air, dideklarasikan di sini agar tetap ada (meskipun tidak dianimate)
+let foggyWaterMaterial;
 
 function init() {
   // Scene
@@ -35,7 +39,6 @@ function init() {
     0.1,
     1000
   );
-  // Posisi awal kamera sementara, akan diatur ulang setelah model dimuat
   camera.position.set(0, 50, 0); // Atur posisi awal cukup tinggi agar tidak di bawah tanah saat loading
   camera.lookAt(0,0,0);
 
@@ -68,8 +71,8 @@ function init() {
   // Controls
   setupControls();
 
-  // Load Model
-  loadGLTFModel("assets/main_land.glb"); // Ganti dengan path file Anda
+  // --- PERUBAHAN: Langsung panggil loadGLTFModel, tidak perlu loadAssets terpisah ---
+  loadGLTFModel("assets/main_land.glb");
 
   // Event Listeners
   window.addEventListener("resize", onWindowResize, false);
@@ -121,11 +124,34 @@ function loadGLTFModel(path) {
       model.scale.set(1, 1, 1); // Sesuaikan skala jika perlu
       model.position.set(0, 0, 0); // Sesuaikan posisi jika perlu
 
-      // Aktifkan bayangan untuk semua mesh dalam model
+      scene.add(model);
+      model.updateMatrixWorld(true); // Pastikan matriks dunia diperbarui
+
+      // --- PERUBAHAN: Define the foggy water material di sini lagi ---
+      // Material air tanpa normal map
+      foggyWaterMaterial = new THREE.MeshStandardMaterial({
+          color: 0x4488FF,    // Warna biru yang lebih kuat
+          metalness: 0.1,
+          roughness: 0.6,
+          transparent: true,
+          opacity: 0.7,
+          side: THREE.DoubleSide
+      });
+      // --- END PERUBAHAN ---
+
+      // Aktifkan bayangan untuk semua mesh dalam model dan terapkan material air
       model.traverse(function (node) {
         if (node.isMesh) {
           node.castShadow = true;
           node.receiveShadow = true;
+
+          // Identifikasi dan terapkan material air berdasarkan nama materialnya
+          if (node.material && node.material.name === 'water' && foggyWaterMaterial) {
+              node.material = foggyWaterMaterial;
+              node.castShadow = false;
+              node.receiveShadow = false;
+          }
+
           if (node.material && node.material.map) {
             node.material.map.anisotropy =
               renderer.capabilities.getMaxAnisotropy();
@@ -133,9 +159,6 @@ function loadGLTFModel(path) {
         }
       });
 
-      scene.add(model);
-
-      // --- PERUBAHAN UTAMA UNTUK POSISI SPAWN KAMERA ---
       // Atur target OrbitControls dan posisi kamera agar selalu di atas model
       const box = new THREE.Box3().setFromObject(model);
       const center = box.getCenter(new THREE.Vector3());
@@ -155,9 +178,6 @@ function loadGLTFModel(path) {
       camera.position.x = center.x + distance;
       camera.position.z = center.z + distance;
       // Y: Pastikan kamera berada di atas titik tertinggi model, ditambah offset
-      // Ini menjamin kamera tidak pernah "di bawah tanah" saat spawn.
-      // Math.max(size.y * 0.5, 20) mengambil nilai terbesar antara 50% tinggi model
-      // atau minimal 20 unit, untuk memastikan ketinggian yang cukup.
       camera.position.y = box.max.y + Math.max(size.y * 0.5, 20); 
 
       // Arahkan kamera ke tengah model
