@@ -16,7 +16,6 @@ let moveUp = false;
 let moveDown = false;
 
 const moveSpeed = 10.0;
-const lookSpeed = 0.002; // Untuk sensitivitas mouse di mode PointerLock
 
 let currentCameraMode = "orbit"; // 'orbit' atau 'pointerlock'
 
@@ -26,8 +25,8 @@ const progressElement = document.getElementById("progress");
 function init() {
   // Scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb); // Warna langit
-  scene.fog = new THREE.Fog(0x87ceeb, 50, 200); // Kabut untuk efek kedalaman
+  scene.background = new THREE.Color(0x1a2a4a); // Warna langit malam yang lebih cerah (biru gelap)
+  scene.fog = new THREE.Fog(0x1a2a4a, 50, 200); // Kabut malam sesuai warna background
 
   // Camera
   camera = new THREE.PerspectiveCamera(
@@ -36,7 +35,10 @@ function init() {
     0.1,
     1000
   );
-  camera.position.set(10, 10, 10); // Posisi awal kamera
+  // Posisi awal kamera sementara, akan diatur ulang setelah model dimuat
+  camera.position.set(0, 50, 0); // Atur posisi awal cukup tinggi agar tidak di bawah tanah saat loading
+  camera.lookAt(0,0,0);
+
 
   // Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -46,11 +48,11 @@ function init() {
   document.body.appendChild(renderer.domElement);
 
   // Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Cahaya ambient lembut
+  const ambientLight = new THREE.AmbientLight(0x777799, 0.7); // Cahaya ambient kebiruan/abu-abu, intensitas lebih tinggi
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2); // Cahaya matahari
-  directionalLight.position.set(50, 80, 30);
+  const directionalLight = new THREE.DirectionalLight(0xeeeeff, 0.8); // Cahaya "bulan" kebiruan terang, intensitas lebih tinggi
+  directionalLight.position.set(20, 50, 20); // Sesuaikan posisi bulan
   directionalLight.castShadow = true;
   directionalLight.shadow.mapSize.width = 2048;
   directionalLight.shadow.mapSize.height = 2048;
@@ -89,7 +91,7 @@ function setupControls() {
   orbitControls.minDistance = 5;
   orbitControls.maxDistance = 100;
   orbitControls.maxPolarAngle = Math.PI / 2 - 0.05; // Batasi agar tidak bisa melihat dari bawah
-  orbitControls.target.set(0, 2, 0); // Arahkan ke tengah model (sesuaikan jika perlu)
+  orbitControls.target.set(0, 2, 0); // Target awal, akan diupdate setelah model dimuat
   orbitControls.enabled = currentCameraMode === "orbit";
 
   // Pointer Lock Controls (Mode WASD)
@@ -104,7 +106,6 @@ function setupControls() {
   pointerLockControls.addEventListener("unlock", () => {
     console.log("PointerLock: Unlocked");
     document.getElementById("info").style.display = "block"; // Tampilkan info saat tidak terkunci
-    // Saat unlock, kita ingin orbit controls mengambil alih jika mode orbit aktif
     if (currentCameraMode === "orbit") {
       orbitControls.enabled = true;
     }
@@ -125,7 +126,6 @@ function loadGLTFModel(path) {
         if (node.isMesh) {
           node.castShadow = true;
           node.receiveShadow = true;
-          // Perbaiki material jika perlu (misal, normal map yang tidak benar)
           if (node.material && node.material.map) {
             node.material.map.anisotropy =
               renderer.capabilities.getMaxAnisotropy();
@@ -135,27 +135,39 @@ function loadGLTFModel(path) {
 
       scene.add(model);
 
-      // Atur target OrbitControls ke tengah bounding box model jika belum diset
-      if (orbitControls.target.length() === 0) {
-        // jika target masih (0,0,0)
-        const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        orbitControls.target.copy(center);
-        // Posisikan kamera berdasarkan ukuran model
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const fov = camera.fov * (Math.PI / 180);
-        let cameraZ = Math.abs((maxDim / 2) * Math.tan(fov * 2)); // Heuristik
-        cameraZ *= 1.5; // Mundur sedikit
-        camera.position.z = center.z + cameraZ;
-        camera.position.y = center.y + cameraZ / 3;
-        camera.position.x = center.x;
-        camera.lookAt(center);
-      }
-      orbitControls.update(); // Penting setelah mengubah target atau posisi kamera
+      // --- PERUBAHAN UTAMA UNTUK POSISI SPAWN KAMERA ---
+      // Atur target OrbitControls dan posisi kamera agar selalu di atas model
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
 
-      loadingScreen.style.display = "none"; // Sembunyikan layar loading
-      animate(); // Mulai animasi setelah model dimuat
+      // Atur target OrbitControls ke tengah model
+      orbitControls.target.copy(center);
+
+      // Hitung jarak kamera yang sesuai untuk menampilkan seluruh model
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = camera.fov * (Math.PI / 180);
+      let distance = Math.abs((maxDim / 2) / Math.tan(fov / 2));
+      distance *= 1.5; // Tambahkan margin agar model terlihat penuh
+
+      // Posisikan kamera:
+      // X dan Z: sedikit menyamping dari tengah agar pandangan awal lebih baik
+      camera.position.x = center.x + distance;
+      camera.position.z = center.z + distance;
+      // Y: Pastikan kamera berada di atas titik tertinggi model, ditambah offset
+      // Ini menjamin kamera tidak pernah "di bawah tanah" saat spawn.
+      // Math.max(size.y * 0.5, 20) mengambil nilai terbesar antara 50% tinggi model
+      // atau minimal 20 unit, untuk memastikan ketinggian yang cukup.
+      camera.position.y = box.max.y + Math.max(size.y * 0.5, 20); 
+
+      // Arahkan kamera ke tengah model
+      camera.lookAt(center);
+
+      // Penting: Update controls agar perubahan posisi dan target kamera diterapkan
+      orbitControls.update();
+
+      loadingScreen.style.display = "none";
+      animate();
     },
     function (xhr) {
       const percentLoaded = (xhr.loaded / xhr.total) * 100;
@@ -177,26 +189,25 @@ function onWindowResize() {
 
 function onKeyDown(event) {
   switch (event.code) {
-    case "KeyM": // Ganti mode kamera
+    case "KeyM":
       toggleCameraMode();
       break;
-    // Kontrol WASD/QSDZ
-    case "KeyW": // Maju (sesuai permintaan)
+    case "KeyW":
       moveForward = true;
       break;
-    case "KeyA": // Kiri
+    case "KeyA":
       moveLeft = true;
       break;
-    case "KeyS": // Mundur
+    case "KeyS":
       moveBackward = true;
       break;
-    case "KeyD": // Kanan
+    case "KeyD":
       moveRight = true;
       break;
-    case "Space": // Naik
+    case "Space":
       moveUp = true;
       break;
-    case "ShiftLeft": // Turun
+    case "ShiftLeft":
     case "ShiftRight":
       moveDown = true;
       break;
@@ -205,7 +216,7 @@ function onKeyDown(event) {
 
 function onKeyUp(event) {
   switch (event.code) {
-    case "KeyWY":
+    case "KeyW":
       moveForward = false;
       break;
     case "KeyA":
@@ -231,64 +242,34 @@ function toggleCameraMode() {
   if (currentCameraMode === "orbit") {
     currentCameraMode = "pointerlock";
     orbitControls.enabled = false;
-    // Tidak perlu mengaktifkan pointerLockControls di sini, akan aktif saat user klik
-    if (pointerLockControls.isLocked) pointerLockControls.unlock(); // Unlock dulu jika sedang locked
-    document.body.requestPointerLock =
-      document.body.requestPointerLock ||
-      document.body.mozRequestPointerLock ||
-      document.body.webkitRequestPointerLock;
-    document.body.requestPointerLock(); // Minta lock
+    if (pointerLockControls.isLocked) pointerLockControls.unlock();
     console.log("Mode Kamera: PointerLock (WASD)");
   } else {
     currentCameraMode = "orbit";
     if (pointerLockControls.isLocked) {
       pointerLockControls.unlock();
     }
-    // pointerLockControls.enabled = false; // Tidak perlu, karena lock/unlock event akan menanganinya
     orbitControls.enabled = true;
     console.log("Mode Kamera: Orbit");
   }
 }
 
 function updatePlayerMovement(deltaTime) {
-  if (!pointerLockControls.isLocked) return; // Hanya bergerak jika pointer terkunci
+  if (!pointerLockControls.isLocked) return;
 
-  const velocity = new THREE.Vector3();
-  const direction = new THREE.Vector3();
-
-  // Dapatkan arah hadap kamera
-  camera.getWorldDirection(direction);
-  direction.y = 0; // Abaikan komponen Y untuk gerakan horizontal
-  direction.normalize();
-
-  if (moveForward) {
-    velocity.add(direction.clone().multiplyScalar(moveSpeed));
-  }
-  if (moveBackward) {
-    velocity.sub(direction.clone().multiplyScalar(moveSpeed));
-  }
-
-  // Untuk gerakan kiri/kanan (strafe)
-  const right = new THREE.Vector3();
-  right.crossVectors(camera.up, direction).normalize(); // Vektor ke kanan (tegak lurus hadap dan atas)
-
-  if (moveLeft) {
-    // PointerLockControls bergerak relatif terhadap kamera, jadi translateX negatif
-    pointerLockControls.moveRight(-moveSpeed * deltaTime);
-  }
-  if (moveRight) {
-    pointerLockControls.moveRight(moveSpeed * deltaTime);
-  }
-
-  // Untuk gerakan maju/mundur
   if (moveForward) {
     pointerLockControls.moveForward(moveSpeed * deltaTime);
   }
   if (moveBackward) {
     pointerLockControls.moveForward(-moveSpeed * deltaTime);
   }
+  if (moveLeft) {
+    pointerLockControls.moveRight(-moveSpeed * deltaTime);
+  }
+  if (moveRight) {
+    pointerLockControls.moveRight(moveSpeed * deltaTime);
+  }
 
-  // Gerakan Vertikal
   if (moveUp) {
     pointerLockControls.getObject().position.y += moveSpeed * deltaTime;
   }
@@ -302,11 +283,8 @@ function animate() {
   const deltaTime = clock.getDelta();
 
   if (currentCameraMode === "orbit") {
-    orbitControls.update(); // Penting jika enableDamping = true
-  } else if (
-    currentCameraMode === "pointerlock" &&
-    pointerLockControls.isLocked
-  ) {
+    orbitControls.update();
+  } else if (currentCameraMode === "pointerlock") {
     updatePlayerMovement(deltaTime);
   }
 
