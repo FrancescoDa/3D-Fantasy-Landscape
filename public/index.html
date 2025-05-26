@@ -3,64 +3,137 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mystica Fantasy - 3D Map</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <div id="info">
-      Mystica Fantasy Map<br />
-      Tekan 'M' untuk ganti mode kamera (Rotasi / WASD)<br />
-      Mode Rotasi: Klik & seret untuk rotasi, Scroll untuk zoom<br />
-      Mode WASD: Klik untuk mengunci kursor. Gerakkan mouse untuk melihat.<br />
-      W: Maju, S: Mundur, A: Kiri, D: Kanan, Spasi: Naik, Shift: Turun
-    </div>
-    <div
-      id="loading-screen"
-      style="
-        position: fixed;
-        width: 100%;
-        height: 100%;
-        background-color: #333;
-        color: white;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 999;
-        font-size: 2em;
-      "
-    >
-      Memuat Model... <span id="progress">0</span>%
-    </div>
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-      }
-    </script>
-    <script type="module" src="js/main.js"></script>
-  </body>
-</html>
-
-<!-- <!DOCTYPE html>
-<html lang="id">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Welcome to Mystica Fantasy</title>
+    <title>Mystica Fantasy - Peta 3D Interaktif</title>
+    <!-- Impor Tailwind CSS melalui CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
+      /* Anda bisa menambahkan font kustom di sini jika mau */
+      /* @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Roboto:wght@300;400;700&display=swap'); */
       body {
-        margin: 0;
-        overflow: hidden;
+        /* font-family: 'Roboto', sans-serif; */ /* Font dasar yang mudah dibaca */
+        overflow: hidden; /* Mencegah scroll bar jika canvas pas */
+        margin: 0; /* Menghilangkan margin default body */
       }
-      canvas {
-        display: block;
+      /* Jika Anda menggunakan font kustom, tambahkan kelasnya di Tailwind config atau di sini */
+      /* .font-fantasy { font-family: 'MedievalSharp', cursive; } */
+      
+      /* Styling untuk kursor terkunci (opsional, jika JS Anda menanganinya) */
+      canvas:active,
+      body.pointer-locked {
+        cursor: none;
+      }
+
+      /* Pastikan canvas Three.js mengisi layar */
+      #three-canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 0; /* Di belakang elemen UI lainnya */
       }
     </style>
   </head>
-  <body>
-    <canvas id="three-canvas"></canvas>
+  <body class="bg-slate-900 text-gray-200">
+    <!-- Elemen Info dengan Latar Belakang Transparan dan Gaya Fantasi -->
+    <div
+      id="info"
+      class="fixed top-4 left-4 z-10 p-5 bg-black/70 backdrop-blur-sm border border-yellow-400/50 rounded-lg shadow-xl max-w-md text-sm"
+    >
+      <h2
+        class="text-xl font-bold text-amber-300 mb-3 border-b border-amber-500/30 pb-2"
+      >
+        Peta Dunia Mystica
+      </h2>
+      <p class="mb-2">
+        Tekan
+        <kbd
+          class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+          >M</kbd
+        >
+        untuk ganti mode kamera (Rotasi / WASD).
+      </p>
+      <div class="mb-2">
+        <strong class="text-amber-200">Mode Rotasi:</strong>
+        <ul class="list-disc list-inside ml-4 text-gray-300">
+          <li>Klik & seret untuk rotasi</li>
+          <li>Scroll untuk zoom</li>
+        </ul>
+      </div>
+      <div>
+        <strong class="text-amber-200">Mode WASD:</strong>
+        <ul class="list-disc list-inside ml-4 text-gray-300">
+          <li>Klik untuk mengunci kursor</li>
+          <li>Gerakkan mouse untuk melihat</li>
+          <li>
+            <kbd
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+              >W</kbd
+            >: Maju,
+            <kbd
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+              >S</kbd
+            >: Mundur
+          </li>
+          <li>
+            <kbd
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+              >A</kbd
+            >: Kiri,
+            <kbd
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+              >D</kbd
+            >: Kanan
+          </li>
+          <li>
+            <kbd
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+              >Spasi</kbd
+            >: Naik,
+            <kbd
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+              >Shift</kbd
+            >: Turun
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Layar Loading dengan Gaya Fantasi -->
+    <div
+      id="loading-screen"
+      class="fixed inset-0 bg-slate-800 text-amber-300 flex flex-col justify-center items-center z-[999] transition-opacity duration-500 ease-in-out"
+    >
+      <!-- Anda bisa menambahkan ikon loading bertema fantasi di sini -->
+      <!-- Contoh: <img src="path/to/fantasy-spinner.svg" class="w-16 h-16 mb-4 animate-spin"> -->
+      <svg
+        class="animate-spin h-12 w-12 text-amber-400 mb-4"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
+      </svg>
+      <p class="text-3xl mb-2">Memuat Dunia Mystica...</p>
+      <p class="text-xl"><span id="progress">0</span>%</p>
+    </div>
+
+    <!-- Ini adalah tempat canvas Three.js akan dirender oleh main.js -->
+    <!-- Pastikan main.js Anda menargetkan body atau membuat canvas sendiri -->
+    <!-- Jika main.js membuat canvas, Anda tidak perlu elemen di bawah ini -->
+    <!-- <canvas id="three-canvas"></canvas> -->
 
     <script type="importmap">
       {
@@ -71,5 +144,39 @@
       }
     </script>
     <script type="module" src="js/main.js"></script>
+    <script>
+      // Skrip kecil untuk menyembunyikan layar loading setelah selesai
+      // Anda mungkin sudah punya logika ini di main.js, sesuaikan jika perlu
+      const loadingScreen = document.getElementById("loading-screen");
+      const progressElement = document.getElementById("progress");
+
+      // Fungsi ini bisa dipanggil dari main.js saat model selesai dimuat
+      function hideLoadingScreen() {
+        loadingScreen.classList.add("opacity-0");
+        setTimeout(() => {
+          loadingScreen.style.display = "none";
+        }, 500); // Sesuaikan dengan durasi transisi
+      }
+
+      // Contoh simulasi progress (hapus jika progress di-handle di main.js)
+      // let currentProgress = 0;
+      // const interval = setInterval(() => {
+      //   currentProgress += 10;
+      //   if (progressElement) progressElement.textContent = currentProgress;
+      //   if (currentProgress >= 100) {
+      //     clearInterval(interval);
+      //     // Panggil hideLoadingScreen() setelah model benar-benar siap
+      //     // Untuk demo, kita panggil setelah progress mencapai 100%
+      //     // hideLoadingScreen(); // Panggil ini dari main.js setelah model siap
+      //   }
+      // }, 200);
+
+      // Anda perlu memastikan bahwa main.js Anda:
+      // 1. Merender ke dalam body atau ke canvas dengan id #three-canvas
+      // 2. Mengupdate #progress textContent secara berkala
+      // 3. Memanggil hideLoadingScreen() ketika model sudah sepenuhnya dimuat dan siap ditampilkan.
+    </script>
   </body>
-</html> -->
+</html>
+
+
