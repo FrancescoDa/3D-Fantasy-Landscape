@@ -16,7 +16,7 @@
       }
       /* Jika Anda menggunakan font kustom, tambahkan kelasnya di Tailwind config atau di sini */
       /* .font-fantasy { font-family: 'MedievalSharp', cursive; } */
-      
+
       /* Styling untuk kursor terkunci (opsional, jika JS Anda menanganinya) */
       canvas:active,
       body.pointer-locked {
@@ -39,10 +39,10 @@
     <div
       id="info"
       class="fixed top-4 left-4 z-10 p-5 bg-black/70 backdrop-blur-sm border border-yellow-400/50 rounded-lg shadow-xl max-w-md text-sm"
-    >
-      <h2
-        class="text-xl font-bold text-amber-300 mb-3 border-b border-amber-500/30 pb-2"
+      style="display: none"
       >
+      <h2
+        class="text-xl font-bold text-amber-300 mb-3 border-b border-amber-500/30 pb-2">
         Peta Dunia Mystica
       </h2>
       <p class="mb-2">
@@ -95,17 +95,48 @@
               >Shift</kbd
             >: Turun
           </li>
+          <li>
+            <kbd
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 border border-gray-400 rounded-md"
+              >R</kbd
+            >: Tembak (Mode WASD)
+          </li>
         </ul>
       </div>
+    </div>
+
+    <!-- Layar Menu Play -->
+    <div
+      id="play-menu-screen"
+      class="fixed inset-0 bg-slate-900/95 backdrop-blur-md text-amber-300 flex flex-col justify-center items-center z-[1000] transition-opacity duration-500 ease-in-out"
+    >
+      <h1
+        class="text-6xl font-bold text-amber-400 mb-8"
+        style="
+          font-family: 'MedievalSharp', cursive;
+          text-shadow: 2px 2px 4px #000000;
+        "
+      >
+        Mystica Fantasy
+      </h1>
+      <p class="text-xl text-gray-300 mb-12">
+        Petualangan menantimu di dunia yang penuh keajaiban.
+      </p>
+      <button
+        id="play-button"
+        class="px-10 py-5 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-2xl rounded-lg shadow-xl transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-amber-400 focus:ring-opacity-50"
+        style="font-family: 'MedievalSharp', cursive"
+      >
+        Mulai Petualangan
+      </button>
+      <p class="mt-20 text-sm text-gray-500">Versi 0.1.0</p>
     </div>
 
     <!-- Layar Loading dengan Gaya Fantasi -->
     <div
       id="loading-screen"
-      class="fixed inset-0 bg-slate-800 text-amber-300 flex flex-col justify-center items-center z-[999] transition-opacity duration-500 ease-in-out"
-    >
-      <!-- Anda bisa menambahkan ikon loading bertema fantasi di sini -->
-      <!-- Contoh: <img src="path/to/fantasy-spinner.svg" class="w-16 h-16 mb-4 animate-spin"> -->
+      class="fixed inset-0 bg-slate-800 text-amber-300 flex flex-col justify-center items-center z-[999] transition-opacity duration-500 ease-in-out opacity-0"
+      style="display: none">
       <svg
         class="animate-spin h-12 w-12 text-amber-400 mb-4"
         xmlns="http://www.w3.org/2000/svg"
@@ -130,9 +161,7 @@
       <p class="text-xl"><span id="progress">0</span>%</p>
     </div>
 
-    <!-- Ini adalah tempat canvas Three.js akan dirender oleh main.js -->
-    <!-- Pastikan main.js Anda menargetkan body atau membuat canvas sendiri -->
-    <!-- Jika main.js membuat canvas, Anda tidak perlu elemen di bawah ini -->
+    <!-- Canvas Three.js akan ditambahkan oleh renderer.js ke body -->
     <!-- <canvas id="three-canvas"></canvas> -->
 
     <script type="importmap">
@@ -146,37 +175,19 @@
     <script type="module" src="js/main.js"></script>
     <script>
       // Skrip kecil untuk menyembunyikan layar loading setelah selesai
-      // Anda mungkin sudah punya logika ini di main.js, sesuaikan jika perlu
-      const loadingScreen = document.getElementById("loading-screen");
-      const progressElement = document.getElementById("progress");
+      // Logika ini sekarang sebagian besar ada di uiHelper.js dan dikontrol dari main.js
+      // const loadingScreenHTML = document.getElementById("loading-screen");
+      // const progressElementHTML = document.getElementById("progress");
 
-      // Fungsi ini bisa dipanggil dari main.js saat model selesai dimuat
-      function hideLoadingScreen() {
-        loadingScreen.classList.add("opacity-0");
-        setTimeout(() => {
-          loadingScreen.style.display = "none";
-        }, 500); // Sesuaikan dengan durasi transisi
-      }
-
-      // Contoh simulasi progress (hapus jika progress di-handle di main.js)
-      // let currentProgress = 0;
-      // const interval = setInterval(() => {
-      //   currentProgress += 10;
-      //   if (progressElement) progressElement.textContent = currentProgress;
-      //   if (currentProgress >= 100) {
-      //     clearInterval(interval);
-      //     // Panggil hideLoadingScreen() setelah model benar-benar siap
-      //     // Untuk demo, kita panggil setelah progress mencapai 100%
-      //     // hideLoadingScreen(); // Panggil ini dari main.js setelah model siap
+      // function hideLoadingScreenFromHTML() {
+      //   if (loadingScreenHTML) {
+      //     loadingScreenHTML.classList.add("opacity-0");
+      //     setTimeout(() => {
+      //       loadingScreenHTML.style.display = "none";
+      //     }, 500);
       //   }
-      // }, 200);
-
-      // Anda perlu memastikan bahwa main.js Anda:
-      // 1. Merender ke dalam body atau ke canvas dengan id #three-canvas
-      // 2. Mengupdate #progress textContent secara berkala
-      // 3. Memanggil hideLoadingScreen() ketika model sudah sepenuhnya dimuat dan siap ditampilkan.
+      // }
+      // Panggilan hideLoadingScreen() sekarang dari dalam modelLoader.js via uiHelper.js
     </script>
   </body>
 </html>
-
-

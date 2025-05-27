@@ -7,43 +7,74 @@ import { setupLighting } from "./core/lighting.js";
 import {
   setupControls,
   updateControls,
-  getOrbitControls,
   getCurrentCameraMode,
-} from "./controls/controlsManager.js"; // Impor getCurrentCameraMode
+  getOrbitControls, // Pastikan ini di-export jika digunakan langsung di modelLoader
+  getPointerLockControls, // Sama seperti di atas
+} from "./controls/controlsManager.js";
 import { loadGLTFModel } from "./loaders/modelLoader.js";
-// --- NEW IMPORT ---
 import { updateShots } from "./gameplay/shooting.js";
+import {
+  showLoadingScreen,
+  hidePlayMenuScreen,
+  showPlayMenuScreen,
+  toggleInfoPanel,
+  // hideLoadingScreen tidak perlu diimpor di sini karena dipanggil dari modelLoader
+} from "./utils/uiHelper.js";
 
-let scene, camera, renderer;
-let clock;
+let scene, camera, renderer, orbitControlsRef, pointerLockControlsRef; // Ubah nama untuk menghindari kebingungan
+let gameModel;
+const clock = new THREE.Clock();
 
-function init() {
+// Fungsi untuk menginisialisasi dasar-dasar Three.js (dipanggil sekali)
+function initializeThreeJS() {
   scene = createScene();
   camera = createCamera();
-  renderer = createRenderer();
+  renderer = createRenderer(); // Ini akan menambahkan canvas ke body
   setupLighting(scene);
 
-  // setupControls sekarang juga membutuhkan scene untuk shooting
-  setupControls(camera, renderer.domElement, scene);
+  const controls = setupControls(camera, renderer.domElement, scene);
+  orbitControlsRef = controls.orbitControls;
+  pointerLockControlsRef = controls.pointerLockControls;
 
-  clock = new THREE.Clock();
+  window.addEventListener("resize", () => handleWindowResize(camera, renderer));
+
+  animate(); // Mulai loop animasi setelah dasar-dasar siap
+}
+
+// Fungsi untuk memulai game (memuat model, dll.)
+function startGame() {
+  hidePlayMenuScreen();
+  showLoadingScreen();
+
+  // Pastikan orbitControlsRef sudah ada sebelum di-pass ke loader
+  if (!orbitControlsRef) {
+    console.error("OrbitControls belum diinisialisasi sebelum memuat model!");
+    // Mungkin perlu inisialisasi kontrol di sini jika alurnya memungkinkan
+    // atau pastikan initializeThreeJS sudah dipanggil.
+  }
 
   loadGLTFModel(
-    "assets/main_land.glb",
+    "assets/main_land.glb", // GANTI DENGAN PATH MODEL ANDA
     scene,
     camera,
-    getOrbitControls(),
+    orbitControlsRef, // Pass referensi yang sudah diinisialisasi
     renderer,
-    (model) => {
-      console.log("Model loaded and scene is ready!");
-      animate();
-    }
-  );
+    (loadedModel) => {
+      gameModel = loadedModel;
+      console.log("Model Mystica dimuat!");
+      // hideLoadingScreen() akan dipanggil dari dalam loadGLTFModel
 
-  window.addEventListener(
-    "resize",
-    () => handleWindowResize(camera, renderer),
-    false
+      // Tampilkan panel info setelah model dimuat, tergantung mode kamera awal
+      if (getCurrentCameraMode() === "orbit") {
+        toggleInfoPanel(true);
+      } else {
+        // Jika mode awal adalah pointerlock (jarang terjadi), pastikan kursor tidak terkunci
+        // dan info panel mungkin tetap tersembunyi sampai interaksi pengguna
+        toggleInfoPanel(false);
+        // Untuk kasus ini, asumsikan mode awal selalu 'orbit' setelah loading
+        // atau atur secara eksplisit di setupControls.
+      }
+    }
   );
 }
 
@@ -51,18 +82,40 @@ function animate() {
   requestAnimationFrame(animate);
   const deltaTime = clock.getDelta();
 
-  updateControls(deltaTime);
+  updateControls(deltaTime); // Update kontrol kamera
+  updateShots(deltaTime, scene); // Update tembakan
 
-  // --- NEW: Update logika tembakan HANYA jika dalam mode pointerlock ---
-  if (getCurrentCameraMode() === "pointerlock") {
-    updateShots(deltaTime, scene); // Pass scene juga
+  if (renderer && scene && camera) {
+    renderer.render(scene, camera);
   }
-  // --- END NEW ---
-
-  renderer.render(scene, camera);
 }
 
-init();
+// --- Alur Eksekusi Utama ---
+document.addEventListener("DOMContentLoaded", () => {
+  const playButton = document.getElementById("play-button");
+
+  // Tampilkan menu play, sembunyikan yang lain
+  showPlayMenuScreen();
+  // loadingScreen dan infoPanel sudah diatur display:none di HTML/CSS atau uiHelper
+  // Pastikan info panel juga disembunyikan
+  toggleInfoPanel(false);
+
+  if (playButton) {
+    playButton.addEventListener("click", () => {
+      // Inisialisasi Three.js hanya jika belum (misalnya, jika ada tombol restart nanti)
+      if (!renderer) {
+        // Cek apakah renderer sudah ada sebagai proxy untuk inisialisasi
+        initializeThreeJS();
+      }
+      startGame(); // Mulai proses loading game
+    });
+  } else {
+    console.error("Tombol Play (#play-button) tidak ditemukan!");
+    // Mungkin tampilkan pesan error di UI juga
+    document.body.innerHTML =
+      "<p style='color:white; text-align:center; margin-top: 50px;'>Error: Tombol Play tidak ditemukan. Gagal memulai aplikasi.</p>";
+  }
+});
 
 // import * as THREE from "three";
 // import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
