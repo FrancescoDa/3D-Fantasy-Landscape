@@ -1,5 +1,10 @@
 // js/main.js
 import * as THREE from "three";
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
 import { createScene } from "./core/scene.js";
 import { createCamera } from "./core/camera.js";
 import { createRenderer, handleWindowResize } from "./core/renderer.js";
@@ -8,8 +13,7 @@ import {
   setupControls,
   updateControls,
   getCurrentCameraMode,
-  getOrbitControls, // Pastikan ini di-export jika digunakan langsung di modelLoader
-  getPointerLockControls, // Sama seperti di atas
+  // ... (impor lainnya)
 } from "./controls/controlsManager.js";
 import { loadGLTFModel } from "./loaders/modelLoader.js";
 import { updateShots } from "./gameplay/shooting.js";
@@ -18,61 +22,95 @@ import {
   hidePlayMenuScreen,
   showPlayMenuScreen,
   toggleInfoPanel,
-  // hideLoadingScreen tidak perlu diimpor di sini karena dipanggil dari modelLoader
 } from "./utils/uiHelper.js";
 
-let scene, camera, renderer, orbitControlsRef, pointerLockControlsRef; // Ubah nama untuk menghindari kebingungan
+let scene, camera, renderer;
+let orbitControlsRef, pointerLockControlsRef;
 let gameModel;
 const clock = new THREE.Clock();
 
-// Fungsi untuk menginisialisasi dasar-dasar Three.js (dipanggil sekali)
+let composer;
+
+// --- NEW: Variabel untuk barel yang melayang ---
+let floatingBarrel = null; // Akan menyimpan referensi ke mesh Land_barrel
+const FLOATING_AMPLITUDE = 0.5; // Seberapa tinggi barel melayang (dalam unit Three.js)
+const FLOATING_FREQUENCY = 2;   // Seberapa cepat barel melayang (nilai lebih besar = lebih cepat)
+// --- END NEW ---
+
+
 function initializeThreeJS() {
   scene = createScene();
   camera = createCamera();
-  renderer = createRenderer(); // Ini akan menambahkan canvas ke body
+  renderer = createRenderer();
   setupLighting(scene);
 
   const controls = setupControls(camera, renderer.domElement, scene);
   orbitControlsRef = controls.orbitControls;
   pointerLockControlsRef = controls.pointerLockControls;
 
-  window.addEventListener("resize", () => handleWindowResize(camera, renderer));
+  // Event listener untuk resize window
+  window.addEventListener("resize", () => {
+    if (camera && renderer && composer) {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight); // Update composer size
+    }
+  });
+
+
+  // --- NEW: Setup Post-processing Composer ---
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    1.5, // strength
+    0.4, // radius
+    0.85 // threshold
+  );
+  composer.addPass(bloomPass);
+
+  const outputPass = new OutputPass();
+  composer.addPass(outputPass);
+  // --- END NEW ---
 
   animate(); // Mulai loop animasi setelah dasar-dasar siap
 }
 
-// Fungsi untuk memulai game (memuat model, dll.)
 function startGame() {
   hidePlayMenuScreen();
   showLoadingScreen();
 
-  // Pastikan orbitControlsRef sudah ada sebelum di-pass ke loader
   if (!orbitControlsRef) {
     console.error("OrbitControls belum diinisialisasi sebelum memuat model!");
-    // Mungkin perlu inisialisasi kontrol di sini jika alurnya memungkinkan
-    // atau pastikan initializeThreeJS sudah dipanggil.
   }
 
   loadGLTFModel(
     "assets/new/main_land.glb", // GANTI DENGAN PATH MODEL ANDA
     scene,
     camera,
-    orbitControlsRef, // Pass referensi yang sudah diinisialisasi
+    orbitControlsRef,
     renderer,
     (loadedModel) => {
       gameModel = loadedModel;
       console.log("Model Mystica dimuat!");
-      // hideLoadingScreen() akan dipanggil dari dalam loadGLTFModel
 
-      // Tampilkan panel info setelah model dimuat, tergantung mode kamera awal
+      // --- NEW: Cari dan simpan Land_barrel ---
+      floatingBarrel = gameModel.getObjectByName("Land_barrel");
+      if (floatingBarrel) {
+        // Simpan posisi Y awal barel untuk perhitungan gerakan
+        floatingBarrel.initialY = floatingBarrel.position.y;
+        console.log("Land_barrel ditemukan dan siap melayang!");
+      } else {
+        console.warn("Land_barrel mesh tidak ditemukan dalam model. Pastikan namanya benar.");
+      }
+      // --- END NEW ---
+
       if (getCurrentCameraMode() === "orbit") {
         toggleInfoPanel(true);
       } else {
-        // Jika mode awal adalah pointerlock (jarang terjadi), pastikan kursor tidak terkunci
-        // dan info panel mungkin tetap tersembunyi sampai interaksi pengguna
         toggleInfoPanel(false);
-        // Untuk kasus ini, asumsikan mode awal selalu 'orbit' setelah loading
-        // atau atur secara eksplisit di setupControls.
       }
     }
   );
@@ -81,424 +119,42 @@ function startGame() {
 function animate() {
   requestAnimationFrame(animate);
   const deltaTime = clock.getDelta();
+  const elapsedTime = clock.getElapsedTime(); // Dapatkan waktu yang berlalu dari clock
 
-  updateControls(deltaTime); // Update kontrol kamera
-  updateShots(deltaTime, scene); // Update tembakan
+  updateControls(deltaTime);
+  updateShots(deltaTime, scene);
 
-  if (renderer && scene && camera) {
-    renderer.render(scene, camera);
+  // --- NEW: Animasi melayang untuk Land_barrel ---
+  if (floatingBarrel) {
+    // Gunakan Math.sin untuk gerakan naik-turun yang halus
+    // elapsedTime * FLOATING_FREQUENCY mengontrol kecepatan siklus
+    // Hasil Math.sin dikalikan FLOATING_AMPLITUDE untuk mengontrol tinggi gerakan
+    // Ditambahkan ke floatingBarrel.initialY agar gerakan berpusat pada posisi awal
+    floatingBarrel.position.y = floatingBarrel.initialY + Math.sin(elapsedTime * FLOATING_FREQUENCY) * FLOATING_AMPLITUDE;
+  }
+  // --- END NEW ---
+
+  if (renderer && scene && camera && composer) {
+    composer.render(); // Render menggunakan composer, bukan langsung renderer
   }
 }
 
-// --- Alur Eksekusi Utama ---
 document.addEventListener("DOMContentLoaded", () => {
   const playButton = document.getElementById("play-button");
 
-  // Tampilkan menu play, sembunyikan yang lain
   showPlayMenuScreen();
-  // loadingScreen dan infoPanel sudah diatur display:none di HTML/CSS atau uiHelper
-  // Pastikan info panel juga disembunyikan
   toggleInfoPanel(false);
 
   if (playButton) {
     playButton.addEventListener("click", () => {
-      // Inisialisasi Three.js hanya jika belum (misalnya, jika ada tombol restart nanti)
       if (!renderer) {
-        // Cek apakah renderer sudah ada sebagai proxy untuk inisialisasi
         initializeThreeJS();
       }
-      startGame(); // Mulai proses loading game
+      startGame();
     });
   } else {
     console.error("Tombol Play (#play-button) tidak ditemukan!");
-    // Mungkin tampilkan pesan error di UI juga
     document.body.innerHTML =
       "<p style='color:white; text-align:center; margin-top: 50px;'>Error: Tombol Play tidak ditemukan. Gagal memulai aplikasi.</p>";
   }
 });
-
-// import * as THREE from "three";
-// import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-// import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-// import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-
-// let scene, camera, renderer;
-// let orbitControls, pointerLockControls;
-// let model;
-// let clock = new THREE.Clock();
-
-// let moveForward = false;
-// let moveBackward = false;
-// let moveLeft = false;
-// let moveRight = false;
-// let moveUp = false;
-// let moveDown = false;
-
-// const moveSpeed = 15.0; // Kecepatan WASD
-
-// let currentCameraMode = "orbit"; // 'orbit' atau 'pointerlock'
-
-// const loadingScreen = document.getElementById("loading-screen");
-// const progressElement = document.getElementById("progress");
-
-// let foggyWaterMaterial; // Variabel untuk material air
-
-// // --- NEW: Variabel untuk efek tembakan cahaya ---
-// let fireKeyIsPressed = false; // Untuk mencegah tembakan terus-menerus saat tombol ditahan
-// const shots = []; // Array untuk menyimpan semua objek tembakan yang aktif
-// const shotSpeed = 100.0; // Kecepatan "peluru" cahaya
-// const shotLifetime = 1.0; // Durasi hidup cahaya dalam detik
-// const shotLightIntensity = 100; // Intensitas cahaya tembakan
-// const shotLightDistance = 100; // Jarak cahaya tembakan menyebar
-// const shotVisualSize = 0.2; // Ukuran visual bola cahaya
-// const shotColor = 0x0000ff; // Warna biru untuk tembakan
-// // --- END NEW ---
-
-// function init() {
-//   // Scene
-//   scene = new THREE.Scene();
-//   scene.background = new THREE.Color(0x1a2a4a); // Warna langit malam yang lebih cerah (biru gelap)
-//   scene.fog = new THREE.Fog(0x1a2a4a, 50, 200); // Kabut malam sesuai warna background
-
-//   // Camera
-//   camera = new THREE.PerspectiveCamera(
-//     75,
-//     window.innerWidth / window.innerHeight,
-//     0.1,
-//     1000
-//   );
-//   camera.position.set(0, 50, 0); // Atur posisi awal cukup tinggi agar tidak di bawah tanah saat loading
-//   camera.lookAt(0,0,0);
-
-//   // Renderer
-//   renderer = new THREE.WebGLRenderer({ antialias: true });
-//   renderer.setSize(window.innerWidth, window.innerHeight);
-//   renderer.shadowMap.enabled = true;
-//   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-//   document.body.appendChild(renderer.domElement);
-
-//   // Lighting
-//   const ambientLight = new THREE.AmbientLight(0x777799, 0.7);
-//   scene.add(ambientLight);
-
-//   const directionalLight = new THREE.DirectionalLight(0xeeeeff, 0.8);
-//   directionalLight.position.set(20, 50, 20);
-//   directionalLight.castShadow = true;
-//   directionalLight.shadow.mapSize.width = 2048;
-//   directionalLight.shadow.mapSize.height = 2048;
-//   directionalLight.shadow.camera.near = 0.5;
-//   directionalLight.shadow.camera.far = 200;
-//   directionalLight.shadow.camera.left = -100;
-//   directionalLight.shadow.camera.right = 100;
-//   directionalLight.shadow.camera.top = 100;
-//   directionalLight.shadow.camera.bottom = -100;
-//   scene.add(directionalLight);
-
-//   // Controls
-//   setupControls();
-
-//   // Load Model
-//   loadGLTFModel("assets/main_land.glb");
-
-//   // Event Listeners
-//   window.addEventListener("resize", onWindowResize, false);
-//   document.addEventListener("keydown", onKeyDown, false);
-//   document.addEventListener("keyup", onKeyUp, false);
-//   document.addEventListener("click", () => {
-//     if (currentCameraMode === "pointerlock" && !pointerLockControls.isLocked) {
-//       pointerLockControls.lock();
-//     }
-//   });
-// }
-
-// function setupControls() {
-//   // Orbit Controls (Mode Rotasi)
-//   orbitControls = new OrbitControls(camera, renderer.domElement);
-//   orbitControls.enableDamping = true;
-//   orbitControls.dampingFactor = 0.05;
-//   orbitControls.screenSpacePanning = false;
-//   orbitControls.minDistance = 5;
-//   orbitControls.maxDistance = 100;
-//   orbitControls.maxPolarAngle = Math.PI / 2 - 0.05; // Batasi agar tidak bisa melihat dari bawah
-//   orbitControls.target.set(0, 2, 0); // Target awal, akan diupdate setelah model dimuat
-//   orbitControls.enabled = currentCameraMode === "orbit";
-
-//   // Pointer Lock Controls (Mode WASD)
-//   pointerLockControls = new PointerLockControls(camera, document.body);
-//   scene.add(pointerLockControls.getObject()); // Objek kontrol (kamera) perlu ditambahkan ke scene
-//   pointerLockControls.enabled = currentCameraMode === "pointerlock";
-
-//   pointerLockControls.addEventListener("lock", () => {
-//     console.log("PointerLock: Locked");
-//     document.getElementById("info").style.display = "none"; // Sembunyikan info saat terkunci
-//   });
-//   pointerLockControls.addEventListener("unlock", () => {
-//     console.log("PointerLock: Unlocked");
-//     document.getElementById("info").style.display = "block"; // Tampilkan info saat tidak terkunci
-//     if (currentCameraMode === "orbit") {
-//       orbitControls.enabled = true;
-//     }
-//   });
-// }
-
-// function loadGLTFModel(path) {
-//   const loader = new GLTFLoader();
-//   loader.load(
-//     path,
-//     function (gltf) {
-//       model = gltf.scene;
-//       model.scale.set(1, 1, 1); // Sesuaikan skala jika perlu
-//       model.position.set(0, 0, 0); // Sesuaikan posisi jika perlu
-
-//       scene.add(model);
-//       model.updateMatrixWorld(true); // Pastikan matriks dunia diperbarui
-
-//       // Material air (biru, tanpa normal map, tanpa aliran)
-//       foggyWaterMaterial = new THREE.MeshStandardMaterial({
-//           color: 0x4488FF,    // Warna biru yang lebih kuat
-//           metalness: 0.1,
-//           roughness: 0.6,
-//           transparent: true,
-//           opacity: 0.7,
-//           side: THREE.DoubleSide
-//       });
-
-//       // Aktifkan bayangan untuk semua mesh dalam model dan terapkan material air
-//       model.traverse(function (node) {
-//         if (node.isMesh) {
-//           node.castShadow = true;
-//           node.receiveShadow = true;
-
-//           // Identifikasi dan terapkan material air berdasarkan nama materialnya
-//           if (node.material && node.material.name === 'water' && foggyWaterMaterial) {
-//               node.material = foggyWaterMaterial;
-//               node.castShadow = false;
-//               node.receiveShadow = false;
-//           }
-
-//           if (node.material && node.material.map) {
-//             node.material.map.anisotropy =
-//               renderer.capabilities.getMaxAnisotropy();
-//           }
-//         }
-//       });
-
-//       // Atur target OrbitControls dan posisi kamera agar selalu di atas model
-//       const box = new THREE.Box3().setFromObject(model);
-//       const center = box.getCenter(new THREE.Vector3());
-//       const size = box.getSize(new THREE.Vector3());
-
-//       // Atur target OrbitControls ke tengah model
-//       orbitControls.target.copy(center);
-
-//       // Hitung jarak kamera yang sesuai untuk menampilkan seluruh model
-//       const maxDim = Math.max(size.x, size.y, size.z);
-//       const fov = camera.fov * (Math.PI / 180);
-//       let distance = Math.abs((maxDim / 2) / Math.tan(fov / 2));
-//       distance *= 1.5; // Tambahkan margin agar model terlihat penuh
-
-//       // Posisikan kamera:
-//       // X dan Z: sedikit menyamping dari tengah agar pandangan awal lebih baik
-//       camera.position.x = center.x + distance;
-//       camera.position.z = center.z + distance;
-//       // Y: Pastikan kamera berada di atas titik tertinggi model, ditambah offset
-//       camera.position.y = box.max.y + Math.max(size.y * 0.5, 20);
-
-//       // Arahkan kamera ke tengah model
-//       camera.lookAt(center);
-
-//       // Penting: Update controls agar perubahan posisi dan target kamera diterapkan
-//       orbitControls.update();
-
-//       loadingScreen.style.display = "none";
-//       animate();
-//     },
-//     function (xhr) {
-//       const percentLoaded = (xhr.loaded / xhr.total) * 100;
-//       progressElement.textContent = Math.round(percentLoaded);
-//       console.log(percentLoaded + "% loaded");
-//     },
-//     function (error) {
-//       console.error("Error loading GLTF model:", error);
-//       loadingScreen.innerHTML = "Gagal memuat model. Cek konsol.";
-//     }
-//   );
-// }
-
-// function onWindowResize() {
-//   camera.aspect = window.innerWidth / window.innerHeight;
-//   camera.updateProjectionMatrix();
-//   renderer.setSize(window.innerWidth, window.innerHeight);
-// }
-
-// function onKeyDown(event) {
-//   switch (event.code) {
-//     case "KeyM":
-//       toggleCameraMode();
-//       break;
-//     case "KeyW":
-//       moveForward = true;
-//       break;
-//     case "KeyA":
-//       moveLeft = true;
-//       break;
-//     case "KeyS":
-//       moveBackward = true;
-//       break;
-//     case "KeyD":
-//       moveRight = true;
-//       break;
-//     case "Space":
-//       moveUp = true;
-//       break;
-//     case "ShiftLeft":
-//     case "ShiftRight":
-//       moveDown = true;
-//       break;
-//     // --- NEW: Tombol 'R' untuk menembak cahaya biru ---
-//     case "KeyR":
-//       // Pastikan dalam mode pointerlock, kursor terkunci, dan tombol belum ditekan
-//       if (currentCameraMode === "pointerlock" && !fireKeyIsPressed && pointerLockControls.isLocked) {
-//         createBlueShot(); // Panggil fungsi untuk membuat tembakan
-//         fireKeyIsPressed = true; // Set flag untuk mencegah spam tembakan
-//       }
-//       break;
-//     // --- END NEW ---
-//   }
-// }
-
-// function onKeyUp(event) {
-//   switch (event.code) {
-//     case "KeyW":
-//       moveForward = false;
-//       break;
-//     case "KeyA":
-//       moveLeft = false;
-//       break;
-//     case "KeyS":
-//       moveBackward = false;
-//       break;
-//     case "KeyD":
-//       moveRight = false;
-//       break;
-//     case "Space":
-//       moveUp = false;
-//       break;
-//     case "ShiftLeft":
-//     case "ShiftRight":
-//       moveDown = false;
-//       break;
-//     // --- NEW: Reset flag saat tombol 'R' dilepas ---
-//     case "KeyR":
-//       fireKeyIsPressed = false;
-//       break;
-//     // --- END NEW ---
-//   }
-// }
-
-// function toggleCameraMode() {
-//   if (currentCameraMode === "orbit") {
-//     currentCameraMode = "pointerlock";
-//     orbitControls.enabled = false;
-//     if (pointerLockControls.isLocked) pointerLockControls.unlock();
-//     console.log("Mode Kamera: PointerLock (WASD)");
-//   } else {
-//     currentCameraMode = "orbit";
-//     if (pointerLockControls.isLocked) {
-//       pointerLockControls.unlock();
-//     }
-//     orbitControls.enabled = true;
-//     console.log("Mode Kamera: Orbit");
-//   }
-// }
-
-// // --- NEW FUNCTION: Membuat tembakan cahaya biru ---
-// function createBlueShot() {
-//     const shotOrigin = camera.position.clone(); // Posisi awal tembakan adalah posisi kamera
-//     const shotDirection = new THREE.Vector3();
-//     camera.getWorldDirection(shotDirection); // Arah tembakan sesuai arah pandang kamera
-
-//     // Buat cahaya PointLight
-//     const light = new THREE.PointLight(shotColor, shotLightIntensity, shotLightDistance, 2); // Warna biru, intensitas, jarak, decay
-//     light.position.copy(shotOrigin);
-//     scene.add(light);
-
-//     // Buat visual bola kecil (representasi "peluru" cahaya)
-//     const sphereGeometry = new THREE.SphereGeometry(shotVisualSize, 8, 8); // Ukuran kecil
-//     const sphereMaterial = new THREE.MeshBasicMaterial({ color: shotColor }); // Material dasar biru
-//     const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-//     sphere.position.copy(shotOrigin);
-//     scene.add(sphere);
-
-//     // Simpan objek tembakan ke array untuk dianimasikan dan dihapus
-//     shots.push({
-//         light: light,
-//         sphere: sphere,
-//         direction: shotDirection,
-//         life: shotLifetime // Durasi hidup
-//     });
-// }
-// // --- END NEW FUNCTION ---
-
-// function updatePlayerMovement(deltaTime) {
-//   if (!pointerLockControls.isLocked) return;
-
-//   if (moveForward) {
-//     pointerLockControls.moveForward(moveSpeed * deltaTime);
-//   }
-//   if (moveBackward) {
-//     pointerLockControls.moveForward(-moveSpeed * deltaTime);
-//   }
-//   if (moveLeft) {
-//     pointerLockControls.moveRight(-moveSpeed * deltaTime);
-//   }
-//   if (moveRight) {
-//     pointerLockControls.moveRight(moveSpeed * deltaTime);
-//   }
-
-//   if (moveUp) {
-//     pointerLockControls.getObject().position.y += moveSpeed * deltaTime;
-//   }
-//   if (moveDown) {
-//     pointerLockControls.getObject().position.y -= moveSpeed * deltaTime;
-//   }
-// }
-
-// function animate() {
-//   requestAnimationFrame(animate);
-//   const deltaTime = clock.getDelta();
-
-//   if (currentCameraMode === "orbit") {
-//     orbitControls.update();
-//   } else if (currentCameraMode === "pointerlock") {
-//     updatePlayerMovement(deltaTime);
-
-//     // --- NEW: Update dan hapus tembakan cahaya ---
-//     for (let i = shots.length - 1; i >= 0; i--) { // Iterasi mundur agar aman saat menghapus elemen
-//       const shot = shots[i];
-
-//       // Gerakkan cahaya dan bola ke depan
-//       shot.light.position.addScaledVector(shot.direction, shotSpeed * deltaTime);
-//       shot.sphere.position.addScaledVector(shot.direction, shotSpeed * deltaTime);
-
-//       // Kurangi durasi hidup
-//       shot.life -= deltaTime;
-
-//       // Hapus jika sudah melewati durasi hidup
-//       if (shot.life <= 0) {
-//         scene.remove(shot.light);
-//         scene.remove(shot.sphere);
-//         // Penting: Disposisi geometri dan material untuk mencegah memory leak
-//         shot.sphere.geometry.dispose();
-//         shot.sphere.material.dispose();
-//         shots.splice(i, 1); // Hapus dari array
-//       }
-//     }
-//     // --- END NEW ---
-//   }
-
-//   renderer.render(scene, camera);
-// }
-
-// // Mulai aplikasi
-// init();
