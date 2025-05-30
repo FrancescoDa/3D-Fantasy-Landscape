@@ -87,7 +87,7 @@ function startGame() {
   }
 
   loadGLTFModel(
-    "assets/new/main_land.glb", // GANTI DENGAN PATH MODEL ANDA
+    "assets/new/main_map_fantasy.glb", // GANTI DENGAN PATH MODEL ANDA
     scene,
     camera,
     orbitControlsRef,
