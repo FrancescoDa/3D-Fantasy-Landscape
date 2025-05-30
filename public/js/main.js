@@ -54,7 +54,7 @@ function startGame() {
   }
 
   loadGLTFModel(
-    "assets/main_land.glb", // GANTI DENGAN PATH MODEL ANDA
+    "assets/new/main_land.glb", // GANTI DENGAN PATH MODEL ANDA
     scene,
     camera,
     orbitControlsRef, // Pass referensi yang sudah diinisialisasi
