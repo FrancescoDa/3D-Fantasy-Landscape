@@ -36,6 +36,14 @@ import {
   hidePlayMenuScreen,
   showPlayMenuScreen,
   toggleInfoPanel,
+
+  // Fungsi UI baru dari uiHelper.js
+  showInteractButton,
+  showDialogueBox,
+  setDialogueText,
+  setDialogueNextButtonText,
+  getInteractButtonElement,      // Untuk event listener
+  getDialogueNextButtonElement, // Untuk event listener
 } from "./utils/uiHelper.js";
 
 let scene, camera, renderer, css2dRenderer;
@@ -48,47 +56,57 @@ let composer;
 let currentAppState = 'INIT';
 
 // --- Variabel untuk barel yang melayang ---
-let floatingBarrel = null;
+let barrel = null;
+const floatingBarrels = [];
 const BARREL_FLOATING_AMPLITUDE = 0.5; // Nama konstanta diubah agar konsisten
 const BARREL_FLOATING_FREQUENCY = 2;   // Nama konstanta diubah agar konsisten
 
 // --- Variabel untuk assassin yang melayang dan bercahaya (dari kode sebelumnya) ---
 const assassins = [];
-const ASSASSIN_PROXIMITY_THRESHOLD = 24; // Jarak pemain harus sedekat ini untuk mengaktifkan assassin
-const ASSASSIN_FLOATING_AMPLITUDE = 2; // Seberapa tinggi assassin melayang (sesuaikan)
+const ASSASSIN_PROXIMITY_THRESHOLD = 24;      // Jarak pemain harus sedekat ini untuk mengaktifkan assassin
+const ASSASSIN_FLOATING_AMPLITUDE = 2;        // Seberapa tinggi assassin melayang (sesuaikan)
 const ASSASSIN_FLOATING_FREQUENCY = 1.8;
 const ASSASSIN_LIGHT_COLOR = 0x4B0082;
-const ASSASSIN_LIGHT_INTENSITY_ACTIVE = 25; // Intensitas cahaya saat assassin aktif
-const ASSASSIN_LIGHT_DISTANCE = 8; // Jarak cahaya assassin
+const ASSASSIN_LIGHT_INTENSITY_ACTIVE = 25;   // Intensitas cahaya saat assassin aktif
+const ASSASSIN_LIGHT_DISTANCE = 8;            // Jarak cahaya assassin
 const worldPositionVec = new THREE.Vector3(); // Reuse untuk world position checks
 
+// --- Variabel untuk Interaksi Dialog Assassin Cowok ---
+const interactiveAssassinsCowok = [];             // Menyimpan data assassin cowok yang bisa diajak bicara
+const ASSASSIN_COWOK_INTERACTION_THRESHOLD = 24;  // Jarak untuk memicu tombol "Berinteraksi"
+let currentInteractableAssassin = null;           // Assassin yang sedang dalam jangkauan
+let isDialogueActive = false;
+let currentDialogueTarget = null;                 // Assassin yang dialognya sedang aktif
+let currentDialogueLineIndex = 0;
+
 // --- Variabel untuk kendi yang melayang ---
-const floatingKendis = []; // Array untuk menyimpan data kendi
+const floatingKendis = [];            // Array untuk menyimpan data kendi
 const KENDI_PROXIMITY_THRESHOLD = 24; // Jarak pemain harus sedekat ini (sesuaikan)
-const KENDI_FLOATING_AMPLITUDE = 3; // Seberapa tinggi kendi melayang (sesuaikan)
+const KENDI_FLOATING_AMPLITUDE = 3;   // Seberapa tinggi kendi melayang (sesuaikan)
 const KENDI_FLOATING_FREQUENCY = 1.8; // Seberapa cepat kendi melayang (sesuaikan)
 
 // --- Variabel untuk diamond ---
 const interactiveDiamonds = [];
 const DIAMOND_PROXIMITY_THRESHOLD = 24;
 const DIAMOND_FLOAT_HEIGHT = 2;
-const DIAMOND_LERP_FACTOR = 0.05; // Faktor Lerp untuk pergerakan diamond
-const DIAMOND_LIGHT_COLOR = 0x8A2BE2; // BlueViolet, atau bisa pakai ASSASSIN_LIGHT_COLOR
-const DIAMOND_LIGHT_INTENSITY_ACTIVE = 30; // Intensitas cahaya saat diamond aktif
-const DIAMOND_LIGHT_DISTANCE = 4;      // Jarak cahaya diamond
-const DIAMOND_LIGHT_DECAY = 1.5; // Decay untuk cahaya diamond
+const DIAMOND_LERP_FACTOR = 0.05;           // Faktor Lerp untuk pergerakan diamond
+const DIAMOND_LIGHT_COLOR = 0x8A2BE2;       // BlueViolet, atau bisa pakai ASSASSIN_LIGHT_COLOR
+const DIAMOND_LIGHT_INTENSITY_ACTIVE = 30;  // Intensitas cahaya saat diamond aktif
+const DIAMOND_LIGHT_DISTANCE = 4;           // Jarak cahaya diamond
+const DIAMOND_LIGHT_DECAY = 1.5;            // Decay untuk cahaya diamond
 
 // --- Variabel untuk koeceng ---
-const activeKoecengs = []; // Bisa lebih dari satu koeceng
+const activeKoecengs = [];              // Bisa lebih dari satu koeceng
 const KOECENG_PROXIMITY_THRESHOLD = 26; // Jarak aktivasi
 const KOECENG_JUMP_HEIGHT = 0.5;        // Ketinggian lompatan
 const KOECENG_JUMP_FREQUENCY = 5;       // Seberapa cepat lompat
 const KOECENG_RUN_SPEED = 3.0;          // Kecepatan lari (unit per detik)
-const KOECENG_MAX_RUN_OFFSET = 12.0;     // Jarak lari maksimum dari posisi awal Z
-const KOECENG_LERP_FACTOR = 0.03;  // Faktor Lerp untuk pergerakan koeceng
+const KOECENG_MAX_RUN_OFFSET = 12.0;    // Jarak lari maksimum dari posisi awal Z
+const KOECENG_LERP_FACTOR = 0.03;       // Faktor Lerp untuk pergerakan koeceng
+
 
 // --- Variabel untuk teks di atas model ---
-const TEXT_OFFSET_Y = 1.5; // Seberapa tinggi teks di atas pivot model (sesuaikan)
+const TEXT_OFFSET_Y = 1.5;                        // Seberapa tinggi teks di atas pivot model (sesuaikan)
 const TEXT_VISIBILITY_THRESHOLD_MULTIPLIER = 1.2; // Teks muncul sedikit lebih jauh dari aktivasi efek lain
 
 function clearMainGameModelsAndInteractiveObjects(targetScene) {
@@ -104,7 +122,6 @@ function clearMainGameModelsAndInteractiveObjects(targetScene) {
     });
     gameModel = null;
   }
-  floatingBarrel = null;
   assassins.length = 0;
   floatingKendis.length = 0;
   interactiveDiamonds.length = 0;
@@ -123,6 +140,17 @@ function clearMainGameModelsAndInteractiveObjects(targetScene) {
   console.log("Model Map Utama dan objek interaktif dibersihkan.");
 }
 
+// Contoh Data Dialog (bisa dipindah ke file JSON nanti)
+const assassinCowokDialogues = {
+  // Tambahkan dialog untuk assassin_cowok_3 hingga assassin_cowok_22
+  "assassin_cowok_default": [ // Fallback jika nama tidak ditemukan
+    "Hmph. Kau lagi.",
+    "Jangan buang waktuku kecuali ada yang penting.",
+    "Ada apa?",
+    "Aku sedang sibuk.",
+    "Pergilah!!!"
+  ]
+};
 
 function initializeThreeJS() {
   scene = createScene();
@@ -235,14 +263,21 @@ function loadMainGame() {
       scene.add(gameModel);
       console.log("Model Map Utama (Mystica) dimuat!");
 
-      // Cari barrel di gameModel
-      floatingBarrel = gameModel.getObjectByName("Land_barrel");
-      if (floatingBarrel) {
-        floatingBarrel.initialY = floatingBarrel.position.y;
-        console.log("Land_barrel ditemukan di Map Utama!");
-      } else {
-        console.warn("Land_barrel TIDAK ditemukan di Map Utama.");
-      }
+      // Cari barrel di gameModel"
+      const land_barrel_names = [
+        "fence_etc", "fire", "hay", "HOuse_etc", "House", "Land_barrel", "land_barrel_1", "land_barrel_2", "land_barrel_3", "land_barrel_4", "land_barrel_5", "Roof_Singles", "Tree_stump", "tree"
+      ];
+      
+      land_barrel_names.forEach(name => {
+        barrel = gameModel.getObjectByName(name);
+        if (barrel) {
+          barrel.initialY = barrel.position.y;
+          floatingBarrels.push(barrel);
+          console.log(`${name} ditemukan di Map Utama!`);
+        } else {
+          console.warn(`${name} TIDAK ditemukan di Map Utama.`);
+        }
+      });
 
       setupInteractiveObjectsInMainMap(gameModel); // Setup objek interaktif
 
@@ -269,10 +304,11 @@ function setupInteractiveObjectsInMainMap(containerModel) {
   floatingKendis.length = 0;
   interactiveDiamonds.length = 0;
   activeKoecengs.length = 0;
+  interactiveAssassinsCowok.length = 0;
 
   containerModel.traverse((child) => {
     if (child.isObject3D) {
-      // Assassin
+      // Assassin Girl
       for (let i = 1; i <= 8; i++) {
         const assassinName = `assassin_girl_${i}`;
         if (child.name === assassinName) {
@@ -285,6 +321,26 @@ function setupInteractiveObjectsInMainMap(containerModel) {
           break;
         }
       }
+
+      // Assassin Cowok
+      for (let i = 1; i <= 22; i++) {
+        const assassinName = `assassin_cowok_${i}`;
+        if (child.name === assassinName) {
+          const dialogueLines = assassinCowokDialogues[assassinName] || assassinCowokDialogues["assassin_cowok_default"];
+          const label = createTextLabel(`Assassin Serem`); // Label nama (opsional)
+          label.position.set(0, TEXT_OFFSET_Y + 0.8, 0); // Sesuaikan Y offset
+          child.add(label); // Tambahkan label ke model assassin
+          interactiveAssassinsCowok.push({
+            model: child,
+            name: assassinName,
+            dialogueLines: dialogueLines,
+            label: label // Simpan label jika ingin dikontrol visibilitasnya
+          });
+          console.log(`Assassin ${assassinName} siap untuk interaksi.`);
+          break; // Keluar dari loop i setelah ditemukan
+        }
+      }
+
       // Kendi Hitam
       if (child.name === "kendi_hitam") {
         child.initialY = child.position.y;
@@ -292,6 +348,7 @@ function setupInteractiveObjectsInMainMap(containerModel) {
         label.position.set(0, TEXT_OFFSET_Y, 0); child.add(label);
         floatingKendis.push({ model: child, label: label, initialY: child.initialY, isActive: false });
       }
+
       // Diamond
       if (child.name === "diamond") {
         const initialY = child.position.y;
@@ -302,6 +359,7 @@ function setupInteractiveObjectsInMainMap(containerModel) {
         label.position.set(0, TEXT_OFFSET_Y, 0); child.add(label);
         interactiveDiamonds.push({ model: child, light: diamondLight, label: label, initialY: initialY, initialRotation: initialRotation, targetY: initialY + DIAMOND_FLOAT_HEIGHT, isActive: false });
       }
+
       // Koeceng
       if (child.name === "koeceng") {
         const initialPosition = child.position.clone();
@@ -312,9 +370,64 @@ function setupInteractiveObjectsInMainMap(containerModel) {
       }
     }
   });
-  console.log(`Setup interaktif: ${assassins.length} assassin, ${floatingKendis.length} kendi, ${interactiveDiamonds.length} diamond, ${activeKoecengs.length} koeceng.`);
+  console.log(`Setup interaktif: ${assassins.length} assassin Girl, ${interactiveAssassinsCowok.length} assassin cowok., ${floatingKendis.length} kendi, ${interactiveDiamonds.length} diamond, ${activeKoecengs.length} koeceng.`);
 }
 
+// --- Fungsi untuk Logika Dialog ---
+function startDialogue(assassinData) {
+  if (isDialogueActive || !assassinData || !assassinData.dialogueLines.length) return;
+
+  isDialogueActive = true;
+  currentDialogueTarget = assassinData;
+  currentDialogueLineIndex = 0;
+
+  if (typeof disableControls === "function") disableControls();
+  showInteractButton(false); // Sembunyikan tombol "Berinteraksi"
+  displayCurrentDialogueLine();
+  showDialogueBox(true);
+}
+
+function displayCurrentDialogueLine() {
+  if (!currentDialogueTarget || !isDialogueActive) return;
+
+  const lines = currentDialogueTarget.dialogueLines;
+  if (currentDialogueLineIndex < lines.length) {
+    setDialogueText(lines[currentDialogueLineIndex]);
+    if (currentDialogueLineIndex === lines.length - 1) {
+      setDialogueNextButtonText("Selesai"); // Atau "Tutup", "End"
+    } else {
+      setDialogueNextButtonText("Next");
+    }
+  } else {
+    // Seharusnya tidak sampai sini jika logika tombol Next benar
+    endDialogue();
+  }
+}
+
+function advanceDialogue() {
+  if (!isDialogueActive || !currentDialogueTarget) return;
+
+  currentDialogueLineIndex++;
+  const lines = currentDialogueTarget.dialogueLines;
+  if (currentDialogueLineIndex < lines.length) {
+    displayCurrentDialogueLine();
+  } else {
+    endDialogue();
+  }
+}
+
+function endDialogue() {
+  isDialogueActive = false;
+  showDialogueBox(false);
+  currentDialogueTarget = null;
+  currentDialogueLineIndex = 0;
+  // Aktifkan kembali kontrol setelah sedikit delay agar UI hilang dulu
+  setTimeout(() => {
+    if (typeof enableCurrentCameraModeControls === "function") {
+        enableCurrentCameraModeControls();
+    }
+  }, 100);
+}
 
 function animate() {
   requestAnimationFrame(animate);
@@ -331,15 +444,17 @@ function animate() {
       // openingModel.rotation.y += deltaTime * 0.05; // Contoh animasi kecil di menu
     }
   } else if (currentAppState === 'IN_GAME') {
-    updateControls(deltaTime);
+    if (!isDialogueActive) { // Hanya update kontrol jika tidak ada dialog
+        updateControls(deltaTime);
+    }
     updateShots(deltaTime, scene);
 
     const playerPosition = camera.position;
 
     // Animasi melayang untuk Land_barrel
-    if (floatingBarrel && floatingBarrel.initialY !== undefined) {
-      floatingBarrel.position.y = floatingBarrel.initialY + Math.sin(elapsedTime * BARREL_FLOATING_FREQUENCY) * BARREL_FLOATING_AMPLITUDE;
-    }
+    floatingBarrels.forEach(barrel => {
+      barrel.position.y = barrel.initialY + Math.sin(elapsedTime * BARREL_FLOATING_FREQUENCY) * BARREL_FLOATING_AMPLITUDE;
+    });
 
     // Logika untuk assassin
     assassins.forEach((assassinData) => {
@@ -366,6 +481,41 @@ function animate() {
         assassinData.label.element.style.visibility = distanceToPlayer < labelVisibilityThreshold ? 'visible' : 'hidden';
       }
     });
+
+    // Logika untuk Assassin Cowok Interaktif
+    let closestInteractableAssassin = null;
+    let minDistanceToAssassinCowok = Infinity;
+
+    if (!isDialogueActive) { // Hanya cari target interaksi jika dialog tidak aktif
+        interactiveAssassinsCowok.forEach(assassinData => {
+            assassinData.model.getWorldPosition(worldPositionVec); // Dapatkan posisi dunia model
+            const distanceToPlayer = playerPosition.distanceTo(worldPositionVec);
+
+            // Kontrol visibilitas label nama (jika ada)
+            if (assassinData.label) {
+                const labelVisibilityThreshold = ASSASSIN_COWOK_INTERACTION_THRESHOLD * TEXT_VISIBILITY_THRESHOLD_MULTIPLIER;
+                assassinData.label.element.style.visibility = distanceToPlayer < labelVisibilityThreshold ? 'visible' : 'hidden';
+            }
+
+            if (distanceToPlayer < ASSASSIN_COWOK_INTERACTION_THRESHOLD) {
+                if (distanceToPlayer < minDistanceToAssassinCowok) {
+                    minDistanceToAssassinCowok = distanceToPlayer;
+                    closestInteractableAssassin = assassinData;
+                }
+            }
+        });
+
+        if (closestInteractableAssassin) {
+            currentInteractableAssassin = closestInteractableAssassin;
+            showInteractButton(true, `Berbicara dengan Assassin`);
+        } else {
+            currentInteractableAssassin = null;
+            showInteractButton(false);
+        }
+    } else {
+        // Jika dialog aktif, pastikan tombol interaksi tetap tersembunyi
+        showInteractButton(false);
+    }
 
     // Logika untuk kendi yang melayang
     floatingKendis.forEach((kendiData) => {
@@ -486,6 +636,26 @@ document.addEventListener("DOMContentLoaded", () => {
   toggleInfoPanel(false);
 
   initializeThreeJS();
+
+  // Event Listener untuk Tombol "Berinteraksi"
+  const interactBtn = getInteractButtonElement();
+  if (interactBtn) {
+    interactBtn.addEventListener('click', () => {
+      if (currentInteractableAssassin && !isDialogueActive) {
+        startDialogue(currentInteractableAssassin);
+      }
+    });
+  }
+
+  // Event Listener untuk Tombol "Next" pada Dialog
+  const dialogueNextBtn = getDialogueNextButtonElement();
+  if (dialogueNextBtn) {
+    dialogueNextBtn.addEventListener('click', () => {
+      if (isDialogueActive) {
+        advanceDialogue();
+      }
+    });
+  }
 
   if (playButton) {
     playButton.addEventListener("click", switchToMainGame);

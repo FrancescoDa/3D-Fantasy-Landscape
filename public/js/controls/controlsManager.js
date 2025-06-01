@@ -236,6 +236,18 @@ export function getPointerLockControls() {
   return pointerLockControlsInstance;
 }
 
+export function enableCurrentCameraModeControls() {
+  if (currentCameraMode === 'orbit') {
+    enableOrbitControls();
+  } else if (currentCameraMode === 'pointerlock') {
+    enablePointerLockControls();
+    // Mungkin perlu lock otomatis jika pengguna menginginkannya setelah dialog
+    // if (pointerLockControlsInstance && !pointerLockControlsInstance.isLocked) {
+    //   pointerLockControlsInstance.lock();
+    // }
+  }
+}
+
 
 
 // // js/controls/controlsManager.js
