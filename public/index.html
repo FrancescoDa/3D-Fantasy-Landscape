@@ -151,6 +151,34 @@
     </div>
   </div>
 
+
+  <!-- Tooltip untuk Item yang Bisa Diambil -->
+  <div id="item-tooltip"
+    class="fixed bg-gray-800 text-white text-sm px-3 py-1.5 rounded-md shadow-lg pointer-events-none opacity-0 transition-opacity duration-200 z-50"
+    style="display: none; white-space: nowrap;">
+    <!-- Konten akan diisi oleh JS -->
+  </div>
+
+  <!-- Modal untuk Informasi Item yang Diambil -->
+  <div id="item-modal-overlay"
+    class="fixed inset-0 bg-black/70 flex justify-center items-center opacity-0 pointer-events-none transition-opacity duration-300 z-[70]"
+    style="display: none;">
+    <div id="item-modal-content" class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-yellow-500/50
+                transform scale-95 opacity-0 transition-all duration-300 ease-out">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="item-modal-title" class="text-2xl font-semibold text-amber-300">Item Diambil!</h3>
+        <button id="item-modal-close-button" class="text-gray-400 hover:text-white text-2xl">×</button>
+      </div>
+      <div class="text-center mb-4">
+        <img id="item-modal-image" src="" alt="Item Image"
+          class="max-w-full h-auto max-h-60 object-contain mx-auto rounded-md border border-gray-700">
+      </div>
+      <p id="item-modal-name" class="text-xl text-center text-gray-200 mb-2"></p>
+      <p id="item-modal-description" class="text-sm text-center text-gray-400"></p>
+      <!-- Bisa tambahkan info lain seperti value jika ada -->
+    </div>
+  </div>
+
   <!-- Canvas Three.js akan ditambahkan oleh renderer.js ke body -->
   <!-- <canvas id="three-canvas"></canvas> -->
 

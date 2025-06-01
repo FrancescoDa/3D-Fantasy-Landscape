@@ -26,6 +26,8 @@ import {
   enablePointerLockControls,
   getCurrentCameraMode,
   setCameraMode,
+  getTakeItemActionStatus,
+  resetTakeItemActionStatus,
 } from "./controls/controlsManager.js";
 
 import { loadGLTFModel } from "./loaders/modelLoader.js";
@@ -44,6 +46,11 @@ import {
   setDialogueNextButtonText,
   getInteractButtonElement,      // Untuk event listener
   getDialogueNextButtonElement, // Untuk event listener
+
+  // Fungsi tambahan untuk ambil item
+  showItemTooltip,
+  showItemModal,
+  getItemModalCloseButtonElement,
 } from "./utils/uiHelper.js";
 
 let scene, camera, renderer, css2dRenderer;
@@ -104,6 +111,11 @@ const KOECENG_RUN_SPEED = 3.0;          // Kecepatan lari (unit per detik)
 const KOECENG_MAX_RUN_OFFSET = 12.0;    // Jarak lari maksimum dari posisi awal Z
 const KOECENG_LERP_FACTOR = 0.03;       // Faktor Lerp untuk pergerakan koeceng
 
+// --- Variabel untuk Item Keranjang Jamur ---
+const collectibleItems = []; // Array umum untuk semua item yang bisa diambil
+const ITEM_PROXIMITY_THRESHOLD = 24; // Jarak untuk tooltip dan pengambilan
+let currentHoveredItem = null; // Item yang sedang di-hover untuk tooltip
+let isModalActive = false; // Untuk melacak apakah modal item sedang aktif
 
 // --- Variabel untuk teks di atas model ---
 const TEXT_OFFSET_Y = 1.5;                        // Seberapa tinggi teks di atas pivot model (sesuaikan)
@@ -150,6 +162,21 @@ const assassinCowokDialogues = {
     "Aku sedang sibuk.",
     "Pergilah!!!"
   ]
+};
+
+// Data untuk item (bisa diperluas atau dari file JSON)
+const itemsData = {
+  "keranjang_jamur": {
+    id: "keranjang_jamur_01", // ID unik jika ada beberapa
+    displayName: "Jamur & Keranjang Telur",
+    tooltipText: "[B] Ambil Jamur & Keranjang Telur",
+    imagePath: "assets/img/keranjang_jamur.png", // SESUAI PATH
+    description: "Kumpulan jamur segar dan beberapa telur yang baru diambil dari hutan.",
+    modalTitle: "Kamu Menemukan:",
+    isCollected: false, // Status awal
+    modelNameInGLTF: "keranjang_jamur" // Nama mesh di file GLB
+  }
+  // Tambahkan item lain di sini jika perlu
 };
 
 function initializeThreeJS() {
@@ -305,6 +332,7 @@ function setupInteractiveObjectsInMainMap(containerModel) {
   interactiveDiamonds.length = 0;
   activeKoecengs.length = 0;
   interactiveAssassinsCowok.length = 0;
+  collectibleItems.length = 0;
 
   containerModel.traverse((child) => {
     if (child.isObject3D) {
@@ -368,9 +396,27 @@ function setupInteractiveObjectsInMainMap(containerModel) {
         label.position.set(0, TEXT_OFFSET_Y + 0.5, 0); child.add(label); // Adjust Y for koeceng
         activeKoecengs.push({ model: child, label: label, initialPosition: initialPosition, initialRotation: initialRotation, isActive: false, currentRunOffsetZ: 0 });
       }
+
+      // Setup untuk Item Keranjang Jamur (dan item koleksi lainnya)
+      Object.values(itemsData).forEach(itemDef => {
+        if (child.name === itemDef.modelNameInGLTF && !itemDef.isCollected) {
+          // Jika item belum diambil sebelumnya (misal dari save game, untuk sekarang selalu false)
+          const label = createTextLabel(itemDef.displayName); // Label nama (opsional)
+          label.position.set(0, TEXT_OFFSET_Y + 0.5, 0); // Sesuaikan Y offset
+          // child.add(label); // Label mungkin tidak diperlukan jika ada tooltip
+
+          collectibleItems.push({
+            model: child,
+            definition: itemDef, // Simpan definisi item lengkap
+            label: label,       // Simpan label jika digunakan
+            isVisible: true    // Status visibilitas model di scene
+          });
+          console.log(`Item koleksi "${itemDef.displayName}" (${child.name}) siap.`);
+        }
+      });
     }
   });
-  console.log(`Setup interaktif: ${assassins.length} assassin Girl, ${interactiveAssassinsCowok.length} assassin cowok., ${floatingKendis.length} kendi, ${interactiveDiamonds.length} diamond, ${activeKoecengs.length} koeceng.`);
+  console.log(`Setup interaktif: ${assassins.length} assassin Girl, ${interactiveAssassinsCowok.length} assassin cowok., ${floatingKendis.length} kendi, ${interactiveDiamonds.length} diamond, ${activeKoecengs.length} koeceng, ${collectibleItems.length} item koleksi ditemukan.`);
 }
 
 // --- Fungsi untuk Logika Dialog ---
@@ -425,6 +471,34 @@ function endDialogue() {
   setTimeout(() => {
     if (typeof enableCurrentCameraModeControls === "function") {
         enableCurrentCameraModeControls();
+    }
+  }, 100);
+}
+
+// --- Fungsi Baru untuk Logika Item ---
+function handleItemInteraction(itemData) {
+  if (!itemData || !itemData.model || itemData.definition.isCollected) return;
+
+  console.log(`Mengambil item: ${itemData.definition.displayName}`);
+  itemData.definition.isCollected = true; // Tandai sebagai sudah diambil
+  itemData.model.visible = false;         // Sembunyikan model dari scene
+  itemData.isVisible = false;             // Update status lokal
+  currentHoveredItem = null;              // Tidak ada item yang di-hover lagi
+  showItemTooltip(false);                 // Sembunyikan tooltip
+
+  // Tampilkan modal
+  isModalActive = true;
+  if (typeof disableControls === "function") disableControls(); // Nonaktifkan kontrol pemain
+  showItemModal(true, itemData.definition);
+}
+
+function closeModal() {
+  isModalActive = false;
+  showItemModal(false);
+  // Aktifkan kembali kontrol setelah sedikit delay
+  setTimeout(() => {
+    if (typeof enableCurrentCameraModeControls === "function") {
+      enableCurrentCameraModeControls();
     }
   }, 100);
 }
@@ -602,6 +676,57 @@ function animate() {
         if (koecengData.label) koecengData.label.element.style.visibility = 'hidden';
       }
     });
+
+    // Logika untuk Item Koleksi (Keranjang Jamur, dll.)
+    let closestHoverableItem = null;
+    let minDistanceToItem = Infinity;
+
+    if (!isDialogueActive && !isModalActive) { // Hanya cek item jika tidak ada UI lain aktif
+      collectibleItems.forEach(itemData => {
+        // Hanya proses item yang masih visible/belum diambil
+        if (itemData.isVisible && itemData.model && itemData.model.visible) {
+          itemData.model.getWorldPosition(worldPositionVec);
+          const distanceToPlayer = playerPosition.distanceTo(worldPositionVec);
+
+          // Kontrol visibilitas label nama (jika ada dan digunakan)
+          if (itemData.label) {
+            const labelVisibilityThreshold = ITEM_PROXIMITY_THRESHOLD * TEXT_VISIBILITY_THRESHOLD_MULTIPLIER;
+            itemData.label.element.style.visibility = distanceToPlayer < labelVisibilityThreshold ? 'visible' : 'hidden';
+          }
+
+          if (distanceToPlayer < ITEM_PROXIMITY_THRESHOLD) {
+            if (distanceToPlayer < minDistanceToItem) {
+              minDistanceToItem = distanceToPlayer;
+              closestHoverableItem = itemData;
+            }
+          }
+        }
+      });
+
+      if (closestHoverableItem) {
+        currentHoveredItem = closestHoverableItem;
+        // Tampilkan tooltip di dekat pemain atau tengah layar
+        // Untuk simpel, kita tampilkan di tengah bawah
+        const tooltipX = window.innerWidth / 2 - 100; // Perkiraan
+        const tooltipY = window.innerHeight - 80;    // Perkiraan
+        showItemTooltip(true, currentHoveredItem.definition.tooltipText, tooltipX, tooltipY);
+
+        // Cek apakah tombol "B" ditekan untuk mengambil item
+        if (getTakeItemActionStatus()) {
+          resetTakeItemActionStatus(); // Penting untuk reset flag
+          handleItemInteraction(currentHoveredItem);
+        }
+
+      } else {
+        currentHoveredItem = null;
+        showItemTooltip(false);
+        resetTakeItemActionStatus(); // Reset juga jika tidak ada item terdekat
+      }
+    } else {
+        // Jika dialog atau modal aktif, sembunyikan tooltip dan reset flag
+        showItemTooltip(false);
+        resetTakeItemActionStatus();
+    }
   } // Akhir dari 'IN_GAME'
 
   if (renderer && scene && camera && composer) {
@@ -636,6 +761,12 @@ document.addEventListener("DOMContentLoaded", () => {
   toggleInfoPanel(false);
 
   initializeThreeJS();
+
+  // Event Listener untuk Tombol Tutup Modal Item
+  const itemModalCloseBtn = getItemModalCloseButtonElement();
+  if (itemModalCloseBtn) {
+    itemModalCloseBtn.addEventListener('click', closeModal);
+  }
 
   // Event Listener untuk Tombol "Berinteraksi"
   const interactBtn = getInteractButtonElement();

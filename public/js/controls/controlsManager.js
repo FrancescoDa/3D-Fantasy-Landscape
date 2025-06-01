@@ -26,6 +26,9 @@ let lastOrbitTarget = new THREE.Vector3();
 let lastOrbitPosition = new THREE.Vector3();
 let wasInPointerLockMode = false;
 
+// --- Variabel untuk aksi ambil item ---
+let takeItemActionRequested = false;
+
 export function setupControls(camera, rendererDomElement, scene) {
   managedCamera = camera;
   managedScene = scene;
@@ -165,6 +168,15 @@ export function setCameraMode(mode) {
 }
 // --- AKHIR FUNGSI BARU ---
 
+// --- Fungsi untuk Aksi Ambil Item ---
+export function getTakeItemActionStatus() {
+  const requested = takeItemActionRequested;
+  // takeItemActionRequested = false; // Reset setelah dicek, atau reset di main.js
+  return requested;
+}
+export function resetTakeItemActionStatus() { // Fungsi reset terpisah lebih baik
+  takeItemActionRequested = false;
+}
 
 function onKeyDown(event) {
   switch (event.code) {
@@ -181,6 +193,12 @@ function onKeyDown(event) {
       if (currentCameraMode === "pointerlock" && pointerLockControlsInstance && pointerLockControlsInstance.isLocked && canShoot()) {
         createShot(managedCamera, managedScene);
       }
+      break;
+    case "KeyB": // Tombol untuk mengambil item
+      // Cek apakah pengguna sedang dalam mode yang memungkinkan interaksi (misal, bukan saat dialog)
+      // if (!isDialogueActiveFromMain) { // Perlu cara untuk mengetahui state dialog dari main.js jika 'B' harus diblok
+          takeItemActionRequested = true;
+      // }
       break;
   }
 }
@@ -247,6 +265,8 @@ export function enableCurrentCameraModeControls() {
     // }
   }
 }
+
+
 
 
 
