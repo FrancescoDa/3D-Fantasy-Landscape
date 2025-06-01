@@ -4,18 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mystica Fantasy - Peta 3D Interaktif</title>
+
     <!-- Impor Tailwind CSS melalui CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      /* Anda bisa menambahkan font kustom di sini jika mau */
-      /* @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Roboto:wght@300;400;700&display=swap'); */
       body {
-        /* font-family: 'Roboto', sans-serif; */ /* Font dasar yang mudah dibaca */
-        overflow: hidden; /* Mencegah scroll bar jika canvas pas */
-        margin: 0; /* Menghilangkan margin default body */
+        overflow: hidden;
+        margin: 0;
       }
-      /* Jika Anda menggunakan font kustom, tambahkan kelasnya di Tailwind config atau di sini */
-      /* .font-fantasy { font-family: 'MedievalSharp', cursive; } */
 
       /* Styling untuk kursor terkunci (opsional, jika JS Anda menanganinya) */
       canvas:active,
@@ -30,7 +26,7 @@
         left: 0;
         width: 100vw;
         height: 100vh;
-        z-index: 0; /* Di belakang elemen UI lainnya */
+        z-index: 0;
       }
     </style>
   </head>
@@ -129,7 +125,7 @@
       >
         Mulai Petualangan
       </button>
-      <p class="mt-20 text-sm text-gray-500">Versi 0.1.0</p>
+      <p class="mt-20 text-sm text-gray-500">Versi 3.6.8</p>
     </div>
 
     <!-- Layar Loading dengan Gaya Fantasi -->
@@ -168,26 +164,11 @@
       {
         "imports": {
           "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+          "tween": "https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@21.0.0/dist/tween.esm.js"
         }
       }
     </script>
     <script type="module" src="js/main.js"></script>
-    <script>
-      // Skrip kecil untuk menyembunyikan layar loading setelah selesai
-      // Logika ini sekarang sebagian besar ada di uiHelper.js dan dikontrol dari main.js
-      // const loadingScreenHTML = document.getElementById("loading-screen");
-      // const progressElementHTML = document.getElementById("progress");
-
-      // function hideLoadingScreenFromHTML() {
-      //   if (loadingScreenHTML) {
-      //     loadingScreenHTML.classList.add("opacity-0");
-      //     setTimeout(() => {
-      //       loadingScreenHTML.style.display = "none";
-      //     }, 500);
-      //   }
-      // }
-      // Panggilan hideLoadingScreen() sekarang dari dalam modelLoader.js via uiHelper.js
-    </script>
   </body>
 </html>

@@ -46,7 +46,6 @@ export function toggleInfoPanel(show) {
 }
 
 export function showPlayMenuScreen() {
-  // Baru
   if (playMenuScreen) {
     playMenuScreen.style.display = "flex";
     setTimeout(() => {

@@ -1,29 +1,29 @@
 // js/gameplay/shooting.js
 import * as THREE from "three";
 
-const shots = []; // Array untuk menyimpan semua objek tembakan yang aktif
+const shots = [];                 // Array untuk menyimpan semua objek tembakan yang aktif
 const shotSpeed = 100.0;
 const shotLifetime = 1.0;
-const shotLightIntensity = 250; // Lebih terang untuk efek yang lebih kuat
-const shotLightDistance = 150; // Jarak cahaya lebih jauh
-const shotVisualSize = 0.25; // Bola sedikit lebih besar
-const shotColor = new THREE.Color(0x0000ff); // Biru
+const shotLightIntensity = 250;   // Lebih terang untuk efek yang lebih kuat
+const shotLightDistance = 150;    // Jarak cahaya lebih jauh
+const shotVisualSize = 0.25;      // Bola sedikit lebih besar
+const shotColor = new THREE.Color(0x0000ff);      // Biru
 const shotCoreColor = new THREE.Color(0xffffff); // Warna inti (putih) untuk glow
 
-const shotBirthDuration = 0.15; // Durasi animasi kemunculan (dalam detik)
+const shotBirthDuration = 0.15;     // Durasi animasi kemunculan (dalam detik)
 
-// --- NEW CONSTANTS FOR TRAIL & LINES (Adjusted for more density/spread) ---
-const maxParticles = 600; // Maksimum partikel trail per tembakan (lebih banyak)
-const particleLife = 0.8; // Umur partikel trail (lebih lama agar menyebar)
-const particleSize = 0.25; // Ukuran dasar partikel (lebih besar)
-const particleSpreadSpeed = 0.1; // Seberapa cepat partikel menyebar dari pusat tembakan
-const particleSpawnRate = 0.005; // Detik antar spawn partikel baru (semakin kecil, semakin padat)
+// --- CONSTANTS FOR TRAIL & LINES (Adjusted for more density/spread) ---
+const maxParticles = 600;           // Maksimum partikel trail per tembakan (lebih banyak)
+const particleLife = 0.8;           // Umur partikel trail (lebih lama agar menyebar)
+const particleSize = 0.25;          // Ukuran dasar partikel (lebih besar)
+const particleSpreadSpeed = 0.1;    // Seberapa cepat partikel menyebar dari pusat tembakan
+const particleSpawnRate = 0.005;    // Detik antar spawn partikel baru (semakin kecil, semakin padat)
 
-const linePointsCount = 8; // Jumlah titik untuk garis "konstelasi" (lebih banyak titik)
-const lineLagDistance = 0.7; // Seberapa jauh setiap titik garis tertinggal dari titik sebelumnya
-const lineJitterAmount = 0.1; // Jumlah acak untuk "getaran" garis
+const linePointsCount = 8;          // Jumlah titik untuk garis "konstelasi" (lebih banyak titik)
+const lineLagDistance = 0.7;        // Seberapa jauh setiap titik garis tertinggal dari titik sebelumnya
+const lineJitterAmount = 0.1;       // Jumlah acak untuk "getaran" garis
 
-let fireKeyIsPressed = false; // Internal state untuk modul ini
+let fireKeyIsPressed = false;       // Internal state untuk modul ini
 
 // Helper function to create a circular texture (untuk partikel)
 const createCircleTexture = (size, color) => {
@@ -70,15 +70,15 @@ export function createShot(camera, scene) {
   const shotDirection = new THREE.Vector3();
   camera.getWorldDirection(shotDirection);
 
-  // --- 1. Bola Utama (dengan efek glow emissive dan inti yang lebih terang) ---
+  // --- Bola Utama (dengan efek glow emissive dan inti yang lebih terang) ---
   const sphereGeometry = new THREE.SphereGeometry(shotVisualSize, 24, 24); // Resolusi lebih tinggi
   // Material untuk glow luar
   const sphereMaterial = new THREE.MeshStandardMaterial({
     color: shotColor,
     emissive: shotColor,
     emissiveIntensity: 0, // Mulai dari 0, akan dianimasikan
-    roughness: 0.2, // Lebih mengkilap
-    metalness: 0.8, // Lebih metalik
+    roughness: 0.2,       // Lebih mengkilap
+    metalness: 0.8,       // Lebih metalik
   });
   const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
   sphere.position.copy(shotOrigin);
@@ -89,9 +89,9 @@ export function createShot(camera, scene) {
   const coreSphereMaterial = new THREE.MeshBasicMaterial({
       color: shotCoreColor, // Putih terang atau biru yang sangat terang
       transparent: true,
-      opacity: 0, // Mulai dari 0, akan dianimasikan
+      opacity: 0,           // Mulai dari 0, akan dianimasikan
       blending: THREE.AdditiveBlending, // Penting untuk efek glow
-      depthWrite: false, // Penting untuk transparansi yang benar
+      depthWrite: false,    // Penting untuk transparansi yang benar
   });
   const coreSphere = new THREE.Mesh(
     new THREE.SphereGeometry(shotVisualSize * 0.7, 24, 24), // Sedikit lebih kecil dari bola utama
@@ -102,7 +102,7 @@ export function createShot(camera, scene) {
   scene.add(coreSphere);
 
 
-  // --- 2. Cahaya PointLight ---
+  // --- Cahaya PointLight ---
   const light = new THREE.PointLight(
     shotColor,
     0, // Mulai intensitas dari 0, akan dianimasikan
@@ -112,7 +112,7 @@ export function createShot(camera, scene) {
   light.position.copy(shotOrigin);
   scene.add(light);
 
-  // --- 3. Sistem Partikel Trail (seperti asap/kabut) ---
+  // --- Sistem Partikel Trail (seperti asap/kabut) ---
   const particlePositions = new Float32Array(maxParticles * 3);
   const particleAlphas = new Float32Array(maxParticles);
   const particleGeom = new THREE.BufferGeometry();
@@ -161,7 +161,7 @@ export function createShot(camera, scene) {
     });
   }
 
-  // --- 4. Garis Konstelasi/Energi ---
+  // --- Garis Konstelasi/Energi ---
   const linePositions = new Float32Array(linePointsCount * 3);
   const lineGeom = new THREE.BufferGeometry();
   lineGeom.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
@@ -365,6 +365,3 @@ export function updateShots(deltaTime, scene) {
     }
   }
 }
-
-// Tidak perlu disposisi particleTexture secara global di sini karena ia bisa dipakai oleh banyak tembakan.
-// particleTexture.dispose(); // Hanya jika seluruh aplikasi berakhir.

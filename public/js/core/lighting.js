@@ -17,5 +17,4 @@ export function setupLighting(scene) {
   directionalLight.shadow.camera.top = 100;
   directionalLight.shadow.camera.bottom = -100;
   scene.add(directionalLight);
-  // scene.add(new THREE.CameraHelper(directionalLight.shadow.camera));
 }
