@@ -2,10 +2,10 @@
 import * as THREE from "three";
 
 export function setupLighting(scene) {
-  const ambientLight = new THREE.AmbientLight(0x777799, 0.7);
+  const ambientLight = new THREE.AmbientLight(0x777799, 2.6);
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xeeeeff, 0.8);
+  const directionalLight = new THREE.DirectionalLight(0xeeeeff, 3.8);
   directionalLight.position.set(20, 50, 20);
   directionalLight.castShadow = true;
   directionalLight.shadow.mapSize.width = 2048;

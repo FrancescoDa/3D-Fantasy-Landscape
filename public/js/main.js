@@ -123,6 +123,14 @@ const ITEM_PROXIMITY_THRESHOLD = 24;  // Jarak untuk tooltip dan pengambilan
 let currentHoveredItem = null;        // Item yang sedang di-hover untuk tooltip
 let isModalActive = false;            // Untuk melacak apakah modal item sedang aktif
 
+// --- Variabel untuk Monster Girl ---
+const monsterGirls = [];
+const MONSTER_GIRL_PROXIMITY_THRESHOLD = 30;
+const MONSTER_GIRL_LOOK_AT_SPEED = 0.05;
+const MONSTER_GIRL_SPIN_ANGLE = Math.PI * 2; // Berputar 360 derajat
+const MONSTER_GIRL_SPIN_DURATION = 1500; // Durasi animasi putaran dalam milidetik
+const MONSTER_GIRL_IDLE_ROTATION_SPEED = 0.005; // Kecepatan rotasi idle (opsional)
+
 // --- Variabel untuk teks di atas model ---
 const TEXT_OFFSET_Y = 1.5;                        // Seberapa tinggi teks di atas pivot model (sesuaikan)
 const TEXT_VISIBILITY_THRESHOLD_MULTIPLIER = 1.2; // Teks muncul sedikit lebih jauh dari aktivasi efek lain
@@ -344,7 +352,9 @@ function setupInteractiveObjectsInMainMap(containerModel) {
   activeKoecengs.length = 0;
   interactiveAssassinsCowok.length = 0;
   collectibleItems.length = 0;
+  monsterGirls.length = 0;
 
+  const processedMonsterGirlNames = new Set();
   const processedAssassinNames = new Set();
 
   containerModel.traverse((child) => {
@@ -361,6 +371,27 @@ function setupInteractiveObjectsInMainMap(containerModel) {
           label.position.set(0, TEXT_OFFSET_Y, 0); child.add(label);
           assassins.push({ model: child, light: light, label: label, initialY: child.initialY, isActive: false });
           break; // Keluar dari loop i jika nama cocok
+        }
+      }
+
+      // Monster Girl
+      for (let i = 0; i <= 2; i++) {
+        const monsterName = `monster_girl_${i}`;
+        if (child.name === monsterName && !processedMonsterGirlNames.has(monsterName)) { // Tambahkan cek ini
+          processedMonsterGirlNames.add(monsterName);
+
+          const label = createTextLabel('Monster Girl');
+          label.position.set(0, TEXT_OFFSET_Y + 1.0, 0);
+          child.add(label);
+
+          monsterGirls.push({
+            model: child,
+            label: label,
+            isActive: false,
+            isSpinning: false, // <-- BARU: State untuk animasi putaran
+            initialQuaternion: child.quaternion.clone() // Simpan quaternion awal untuk kembali
+          });
+          console.log(`Monster Girl "${child.name}" ditemukan dan siap berinteraksi.`);
         }
       }
 
@@ -442,7 +473,7 @@ function setupInteractiveObjectsInMainMap(containerModel) {
       });
     }
   });
-  console.log(`Setup interaktif: ${assassins.length} assassin Girl, ${interactiveAssassinsCowok.length} assassin cowok., ${floatingKendis.length} kendi, ${interactiveDiamonds.length} diamond, ${activeKoecengs.length} koeceng, ${collectibleItems.length} item koleksi ditemukan.`);
+  console.log(`Setup interaktif: ${assassins.length} assassin Girl, ${interactiveAssassinsCowok.length} assassin cowok., ${floatingKendis.length} kendi, ${interactiveDiamonds.length} diamond, ${activeKoecengs.length} koeceng, ${collectibleItems.length} item koleksi ditemukan., ${monsterGirls.length} monster girl ... ditemukan.`);
 }
 
 // --- Fungsi untuk Logika Dialog ---
@@ -536,28 +567,74 @@ function handleSceneClick(normalizedMouseCoords) {
   mouse.copy(normalizedMouseCoords);
   raycaster.setFromCamera(mouse, camera);
 
-  const interactableObjects = floatingKendis.map(k => k.model); // Hanya kendi untuk saat ini
-  const intersects = raycaster.intersectObjects(interactableObjects, true); // true untuk rekursif
+  // Gabungkan semua objek yang bisa diklik di scene
+  const clickableModels = [
+    ...floatingKendis.map(k => k.model),
+    ...monsterGirls.map(mg => mg.model) // <-- TAMBAHKAN monster_girl
+  ];
+
+  if (clickableModels.length === 0) return; // Tidak ada objek untuk diklik
+
+  const intersects = raycaster.intersectObjects(clickableModels, true);
 
   if (intersects.length > 0) {
-    const clickedObject = intersects[0].object; // Objek (mesh) pertama yang terklik
+    const clickedObjectRoot = intersects[0].object; // Objek (mesh) pertama yang terklik
 
-    // Cari data kendi yang sesuai dengan model yang diklik
-    // Kita mungkin perlu mencari parent-nya jika yang diklik adalah sub-mesh
-    let kendiData = null;
-    let parent = clickedObject;
+    // Cari data objek yang sesuai
+    let parent = clickedObjectRoot;
+    let targetData = null;
+    let objectType = null; // Untuk membedakan jenis objek
+
     while (parent) {
-        kendiData = floatingKendis.find(k => k.model === parent);
-        if (kendiData) break;
-        parent = parent.parent;
+      targetData = floatingKendis.find(k => k.model === parent);
+      if (targetData) {
+        objectType = 'kendi';
+        break;
+      }
+      targetData = monsterGirls.find(mg => mg.model === parent);
+      if (targetData) {
+        objectType = 'monster_girl';
+        break;
+      }
+      parent = parent.parent;
     }
 
-
-    if (kendiData && !kendiData.isTilting) {
-      // Jika kendi ditemukan dan tidak sedang miring
-      tiltKendi(kendiData);
+    if (targetData) {
+      if (objectType === 'kendi' && !targetData.isTilting) {
+        tiltKendi(targetData);
+      } else if (objectType === 'monster_girl' && !targetData.isSpinning) {
+        // Cek jarak tambahan jika perlu, atau biarkan klik dari jarak mana pun
+        const distanceToPlayer = camera.position.distanceTo(targetData.model.position);
+        if (distanceToPlayer < MONSTER_GIRL_PROXIMITY_THRESHOLD * 1.5) { // Jarak klik bisa sedikit lebih besar
+             spinMonsterGirl(targetData);
+        }
+      }
     }
   }
+}
+
+// --- BARU: Fungsi untuk menganimasikan putaran monster_girl ---
+function spinMonsterGirl(mgData) {
+  if (mgData.isSpinning) return; // Jangan mulai animasi baru jika sudah berputar
+  mgData.isSpinning = true;
+
+  const currentRotationX = mgData.model.rotation.z;
+  const flipState = { z: currentRotationX };
+
+  new TWEEN.Tween(flipState)
+    .to({ z: currentRotationX + MONSTER_GIRL_SPIN_ANGLE }, MONSTER_GIRL_SPIN_DURATION) // MONSTER_GIRL_SPIN_ANGLE defaultnya Math.PI * 2 (360 derajat)
+    .easing(TWEEN.Easing.Quadratic.InOut)
+    .onUpdate(() => {
+      mgData.model.rotation.z = flipState.z;
+    })
+    .onComplete(() => {
+      mgData.isSpinning = false;
+      const twoPi = Math.PI * 2;
+      mgData.model.rotation.z = (mgData.model.rotation.z % twoPi + twoPi) % twoPi;
+
+      console.log(`${mgData.model.name} selesai melakukan flip.`);
+    })
+    .start();
 }
 
 // --- BARU: Fungsi untuk menganimasikan kemiringan kendi ---
@@ -665,7 +742,7 @@ function animate() {
           assassinData.light.intensity = ASSASSIN_LIGHT_INTENSITY_ACTIVE;
         }
         const floatOffset = Math.sin(elapsedTime * ASSASSIN_FLOATING_FREQUENCY) * ASSASSIN_FLOATING_AMPLITUDE;
-        assassinData.model.position.y = assassinData.initialY + floatOffset;
+        assassinData.model.position.y = assassinData.initialY + Math.max(0, floatOffset);
       } else {
         if (assassinData.isActive) {
           assassinData.isActive = false;
@@ -854,6 +931,41 @@ function animate() {
         showItemTooltip(false);
         resetTakeItemActionStatus();
     }
+
+    // --- Logika untuk Monster Girl (Disesuaikan) ---
+    monsterGirls.forEach((mgData) => {
+      mgData.model.getWorldPosition(worldPositionVec);
+      const distanceToPlayer = playerPosition.distanceTo(worldPositionVec);
+      // `shouldBeActive` sekarang hanya untuk visibilitas label atau efek pasif lain, bukan lookAt
+      const shouldBeActiveForLabel = distanceToPlayer < MONSTER_GIRL_PROXIMITY_THRESHOLD;
+
+      if (mgData.label) {
+        const labelVisibilityThreshold = MONSTER_GIRL_PROXIMITY_THRESHOLD * TEXT_VISIBILITY_THRESHOLD_MULTIPLIER;
+        mgData.label.element.style.visibility = distanceToPlayer < labelVisibilityThreshold ? 'visible' : 'hidden';
+      }
+
+      // Opsional: Animasi idle berputar pelan jika tidak sedang diklik
+      // if (!mgData.isSpinning && shouldBeActiveForLabel) { // Atau tanpa shouldBeActiveForLabel jika ingin selalu idle
+      //   // mgData.model.rotation.y += MONSTER_GIRL_IDLE_ROTATION_SPEED;
+      // }
+
+      // Logika `isSpinning` dikontrol oleh `spinMonsterGirl` yang dipanggil dari `handleSceneClick`
+      // Tidak ada lagi logika lookAt di sini.
+
+      // Jika sebelumnya ada logika untuk kembali ke initialQuaternion saat pemain menjauh,
+      // itu bisa tetap ada jika diinginkan, tapi pastikan tidak konflik dengan isSpinning.
+      if (!shouldBeActiveForLabel && mgData.isActive) {
+          mgData.isActive = false; // Hanya update status internal
+          // Jika ingin kembali ke rotasi awal saat pemain menjauh & tidak spinning:
+          // if (!mgData.isSpinning) {
+          //    new TWEEN.Tween(mgData.model.quaternion)
+          //      .to(mgData.initialQuaternion, MONSTER_GIRL_SPIN_DURATION / 2)
+          //      .start();
+          // }
+      } else if (shouldBeActiveForLabel && !mgData.isActive) {
+          mgData.isActive = true;
+      }
+    });
   } // Akhir dari 'IN_GAME'
 
   if (renderer && scene && camera && composer) {
