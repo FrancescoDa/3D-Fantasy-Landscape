@@ -89,7 +89,7 @@ let currentDialogueLineIndex = 0;
 // --- Variabel untuk kendi yang melayang ---
 const floatingKendis = [];            // Array untuk menyimpan data kendi
 const KENDI_PROXIMITY_THRESHOLD = 24; // Jarak pemain harus sedekat ini (sesuaikan)
-const KENDI_FLOATING_AMPLITUDE = 3;   // Seberapa tinggi kendi melayang (sesuaikan)
+const KENDI_FLOATING_AMPLITUDE = 2;   // Seberapa tinggi kendi melayang (sesuaikan)
 const KENDI_FLOATING_FREQUENCY = 1.8; // Seberapa cepat kendi melayang (sesuaikan)
 
 // --- Variabel untuk diamond ---
@@ -112,10 +112,10 @@ const KOECENG_MAX_RUN_OFFSET = 12.0;    // Jarak lari maksimum dari posisi awal 
 const KOECENG_LERP_FACTOR = 0.03;       // Faktor Lerp untuk pergerakan koeceng
 
 // --- Variabel untuk Item Keranjang Jamur ---
-const collectibleItems = []; // Array umum untuk semua item yang bisa diambil
-const ITEM_PROXIMITY_THRESHOLD = 24; // Jarak untuk tooltip dan pengambilan
-let currentHoveredItem = null; // Item yang sedang di-hover untuk tooltip
-let isModalActive = false; // Untuk melacak apakah modal item sedang aktif
+const collectibleItems = [];          // Array umum untuk semua item yang bisa diambil
+const ITEM_PROXIMITY_THRESHOLD = 24;  // Jarak untuk tooltip dan pengambilan
+let currentHoveredItem = null;        // Item yang sedang di-hover untuk tooltip
+let isModalActive = false;            // Untuk melacak apakah modal item sedang aktif
 
 // --- Variabel untuk teks di atas model ---
 const TEXT_OFFSET_Y = 1.5;                        // Seberapa tinggi teks di atas pivot model (sesuaikan)
@@ -334,19 +334,22 @@ function setupInteractiveObjectsInMainMap(containerModel) {
   interactiveAssassinsCowok.length = 0;
   collectibleItems.length = 0;
 
+  const processedAssassinNames = new Set();
+
   containerModel.traverse((child) => {
     if (child.isObject3D) {
       // Assassin Girl
       for (let i = 1; i <= 8; i++) {
         const assassinName = `assassin_girl_${i}`;
-        if (child.name === assassinName) {
+        if (child.name === assassinName && !processedAssassinNames.has(assassinName)) { // Tambahkan cek ini
+          processedAssassinNames.add(assassinName); // Tandai sebagai sudah diproses
           child.initialY = child.position.y;
           const light = new THREE.PointLight(ASSASSIN_LIGHT_COLOR, 0, ASSASSIN_LIGHT_DISTANCE, 1.5);
           light.position.set(0, 1, 0); child.add(light);
-          const label = createTextLabel(`Assassin Girl`); // Teks lebih generik
-          label.position.set(0, TEXT_OFFSET_Y + 1, 0); child.add(label);
+          const label = createTextLabel(`Assassin Girl`);
+          label.position.set(0, TEXT_OFFSET_Y, 0); child.add(label);
           assassins.push({ model: child, light: light, label: label, initialY: child.initialY, isActive: false });
-          break;
+          break; // Keluar dari loop i jika nama cocok
         }
       }
 
@@ -664,7 +667,7 @@ function animate() {
       } else {
         if (koecengData.isActive) {
           koecengData.model.position.lerp(koecengData.initialPosition, KOECENG_LERP_FACTOR);
-          koecengData.model.rotation.slerp(koecengData.initialRotation, KOECENG_LERP_FACTOR * 0.5); // Rotasi kembali lebih lambat
+          // koecengData.model.rotation.slerp(koecengData.initialRotation, KOECENG_LERP_FACTOR * 0.5); // Rotasi kembali lebih lambat
 
           if (koecengData.model.position.distanceTo(koecengData.initialPosition) < 0.1) {
             koecengData.model.position.copy(koecengData.initialPosition);
