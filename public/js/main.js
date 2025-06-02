@@ -28,6 +28,7 @@ import {
   setCameraMode,
   getTakeItemActionStatus,
   resetTakeItemActionStatus,
+  setOnSceneClickCallback,
 } from "./controls/controlsManager.js";
 
 import { loadGLTFModel } from "./loaders/modelLoader.js";
@@ -91,6 +92,11 @@ const floatingKendis = [];            // Array untuk menyimpan data kendi
 const KENDI_PROXIMITY_THRESHOLD = 24; // Jarak pemain harus sedekat ini (sesuaikan)
 const KENDI_FLOATING_AMPLITUDE = 2;   // Seberapa tinggi kendi melayang (sesuaikan)
 const KENDI_FLOATING_FREQUENCY = 1.8; // Seberapa cepat kendi melayang (sesuaikan)
+const KENDI_TILT_ANGLE = Math.PI / 4; // 45 derajat dalam radian
+const KENDI_TILT_DURATION = 300; // Durasi animasi miring dalam milidetik
+// Raycaster untuk deteksi klik
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(); // Akan diupdate oleh controlsManager
 
 // --- Variabel untuk diamond ---
 const interactiveDiamonds = [];
@@ -196,6 +202,11 @@ function initializeThreeJS() {
   const controls = setupControls(camera, renderer.domElement, scene);
   orbitControlsRef = controls.orbitControls;
   pointerLockControlsRef = controls.pointerLockControls;
+
+  // --- BARU: Daftarkan callback klik dari controlsManager ---
+  if (typeof setOnSceneClickCallback === "function") {
+    setOnSceneClickCallback(handleSceneClick);
+  }
 
   window.addEventListener("resize", () => {
     if (camera && renderer && composer) {
@@ -375,10 +386,22 @@ function setupInteractiveObjectsInMainMap(containerModel) {
       // Kendi Hitam
       if (child.name === "kendi_hitam") {
         child.initialY = child.position.y;
+        child.initialRotation = child.rotation.clone(); // Simpan rotasi awal
         const label = createTextLabel('Kendi Hitam Ajaib');
         label.position.set(0, TEXT_OFFSET_Y, 0); child.add(label);
-        floatingKendis.push({ model: child, label: label, initialY: child.initialY, isActive: false });
+        floatingKendis.push({
+          model: child,
+          label: label,
+          initialY: child.initialY,
+          initialRotation: child.initialRotation.clone(), // Simpan rotasi awal
+          isActive: false,
+          isTilting: false, // State untuk animasi miring
+          tiltDirection: 1, // 1 untuk kanan, -1 untuk kiri
+          originalQuaternion: child.quaternion.clone() // Simpan quaternion awal
+        });
+        console.log("Kendi Hitam ditemukan dan siap untuk interaksi klik.");
       }
+
 
       // Diamond
       if (child.name === "diamond") {
@@ -506,6 +529,103 @@ function closeModal() {
   }, 100);
 }
 
+// --- BARU: Fungsi untuk menangani klik pada scene ---
+function handleSceneClick(normalizedMouseCoords) {
+  if (currentAppState !== 'IN_GAME' || isDialogueActive || isModalActive) return;
+
+  mouse.copy(normalizedMouseCoords);
+  raycaster.setFromCamera(mouse, camera);
+
+  const interactableObjects = floatingKendis.map(k => k.model); // Hanya kendi untuk saat ini
+  const intersects = raycaster.intersectObjects(interactableObjects, true); // true untuk rekursif
+
+  if (intersects.length > 0) {
+    const clickedObject = intersects[0].object; // Objek (mesh) pertama yang terklik
+
+    // Cari data kendi yang sesuai dengan model yang diklik
+    // Kita mungkin perlu mencari parent-nya jika yang diklik adalah sub-mesh
+    let kendiData = null;
+    let parent = clickedObject;
+    while (parent) {
+        kendiData = floatingKendis.find(k => k.model === parent);
+        if (kendiData) break;
+        parent = parent.parent;
+    }
+
+
+    if (kendiData && !kendiData.isTilting) {
+      // Jika kendi ditemukan dan tidak sedang miring
+      tiltKendi(kendiData);
+    }
+  }
+}
+
+// --- BARU: Fungsi untuk menganimasikan kemiringan kendi ---
+function tiltKendi(kendiData) {
+  kendiData.isTilting = true;
+
+  // Tentukan target rotasi Z
+  // Miring ke arah berlawanan dari kemiringan terakhir, atau ke kanan jika pertama kali
+  const targetRotationZ = kendiData.tiltDirection * KENDI_TILT_ANGLE;
+
+  // Simpan quaternion saat ini dari model
+  const currentQuaternion = new THREE.Quaternion().copy(kendiData.model.quaternion);
+
+  // Buat quaternion target
+  // Kita akan merotasi dari originalQuaternion ditambah dengan tilt yang diinginkan
+  // Ini lebih stabil daripada merotasi dari posisi miring sebelumnya
+  const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 0, 1), // Sumbu Z untuk miring ke kanan/kiri
+    targetRotationZ
+  );
+  // Gabungkan dengan rotasi XY awal agar tidak meresetnya
+  const initialXYRotationQuaternion = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(kendiData.initialRotation.x, kendiData.initialRotation.y, 0, 'XYZ')
+  );
+  targetQuaternion.premultiply(initialXYRotationQuaternion);
+
+
+  new TWEEN.Tween(currentQuaternion)
+    .to(targetQuaternion, KENDI_TILT_DURATION)
+    .easing(TWEEN.Easing.Quadratic.Out) // Jenis easing
+    .onUpdate(() => {
+      kendiData.model.quaternion.copy(currentQuaternion);
+    })
+    .onComplete(() => {
+      kendiData.isTilting = false;
+      // Balik arah untuk klik berikutnya
+      kendiData.tiltDirection *= -1;
+
+      // Opsional: Animasi kembali ke posisi tegak setelah beberapa saat
+      // setTimeout(() => {
+      //   if (!kendiData.isTilting) { // Pastikan tidak ada klik lain yang memulai animasi baru
+      //     resetKendiTilt(kendiData);
+      //   }
+      // }, 1000); // Kembali tegak setelah 1 detik
+    })
+    .start();
+}
+
+// --- BARU: Opsional, fungsi untuk mengembalikan kendi ke posisi tegak ---
+function resetKendiTilt(kendiData) {
+  if (kendiData.isTilting) return; // Jangan reset jika sedang animasi lain
+  kendiData.isTilting = true;
+
+  const currentQuaternion = new THREE.Quaternion().copy(kendiData.model.quaternion);
+
+  new TWEEN.Tween(currentQuaternion)
+    .to(kendiData.originalQuaternion, KENDI_TILT_DURATION) // Kembali ke quaternion awal
+    .easing(TWEEN.Easing.Quadratic.Out)
+    .onUpdate(() => {
+      kendiData.model.quaternion.copy(currentQuaternion);
+    })
+    .onComplete(() => {
+      kendiData.isTilting = false;
+      kendiData.tiltDirection = 1; // Reset arah tilt default ke kanan untuk klik berikutnya
+    })
+    .start();
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const deltaTime = clock.getDelta();
@@ -545,7 +665,7 @@ function animate() {
           assassinData.light.intensity = ASSASSIN_LIGHT_INTENSITY_ACTIVE;
         }
         const floatOffset = Math.sin(elapsedTime * ASSASSIN_FLOATING_FREQUENCY) * ASSASSIN_FLOATING_AMPLITUDE;
-        assassinData.model.position.y = assassinData.initialY + Math.max(0, floatOffset);
+        assassinData.model.position.y = assassinData.initialY + floatOffset;
       } else {
         if (assassinData.isActive) {
           assassinData.isActive = false;
@@ -608,7 +728,11 @@ function animate() {
       } else {
         if (kendiData.isActive) {
           kendiData.isActive = false;
-          kendiData.model.position.y = kendiData.initialY;
+          if (!kendiData.isTilting) { // Hanya reset jika tidak sedang animasi miring
+            kendiData.model.position.y = kendiData.initialY;
+            // Jika ingin kendi kembali tegak saat pemain menjauh dan tidak sedang miring
+            // resetKendiTilt(kendiData); // Hati-hati, ini bisa konflik dengan klik
+          }
         }
       }
       if (kendiData.label) {

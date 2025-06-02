@@ -28,6 +28,7 @@ let wasInPointerLockMode = false;
 
 // --- Variabel untuk aksi ambil item ---
 let takeItemActionRequested = false;
+let onSceneClickCallback = null;
 
 export function setupControls(camera, rendererDomElement, scene) {
   managedCamera = camera;
@@ -88,10 +89,37 @@ export function setupControls(camera, rendererDomElement, scene) {
     }
   });
 
+  rendererDomElement.addEventListener("click", onRendererClick, false);
+
   return {
     orbitControls: orbitControlsInstance,
     pointerLockControls: pointerLockControlsInstance,
   };
+}
+
+// --- BARU: Fungsi untuk mendaftarkan callback klik ---
+export function setOnSceneClickCallback(callback) {
+  onSceneClickCallback = callback;
+}
+
+// --- BARU: Handler untuk klik pada renderer ---
+function onRendererClick(event) {
+  if (onSceneClickCallback) {
+    // Normalisasi koordinat mouse
+    const mouse = new THREE.Vector2();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    onSceneClickCallback(mouse);
+  }
+
+  // Logika PointerLockControls yang sudah ada (jika masih relevan dan belum dipisahkan)
+  if (
+    currentCameraMode === "pointerlock" &&
+    pointerLockControlsInstance && // Pastikan instance ada
+    !pointerLockControlsInstance.isLocked
+  ) {
+    pointerLockControlsInstance.lock();
+  }
 }
 
 export function getCurrentCameraMode() {
@@ -257,7 +285,7 @@ export function getPointerLockControls() {
 export function enableCurrentCameraModeControls() {
   if (currentCameraMode === 'orbit') {
     enableOrbitControls();
-  } else if (currentCameraMode === 'pointerlock') {
+  } else if (currentCameraMode === 'pointerlock' && pointerLockControlsInstance) {
     enablePointerLockControls();
     // Mungkin perlu lock otomatis jika pengguna menginginkannya setelah dialog
     // if (pointerLockControlsInstance && !pointerLockControlsInstance.isLocked) {
