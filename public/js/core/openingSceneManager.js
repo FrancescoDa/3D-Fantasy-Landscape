@@ -111,7 +111,8 @@ export function loadAndAnimateOpeningScene(scene, camera, renderer, onAnimationC
                         const texts = [
                             "Selamat Datang di <strong>MYSTICA FANTASY</strong>!",
                             "Perkenalkan, namaku <em>Alira Moonveil</em>.",
-                            "Yuk, ikuti aku untuk menjelajahi Pulau Sang Penyihir!"
+                            "Yuk, ikuti aku untuk menjelajahi Pulau Sang Penyihir!",
+                            "Tekan 'P' untuk PLAY.",
                         ];
                         texts.forEach(text => {
                             const label = createNarrationLabel(text);
